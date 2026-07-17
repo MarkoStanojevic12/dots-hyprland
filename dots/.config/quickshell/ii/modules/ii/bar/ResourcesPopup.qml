@@ -42,6 +42,12 @@ StyledPopup {
                     value: root.formatKB(ResourceUsage.memoryTotal)
                 }
             }
+
+            Sparkline {
+                width: 132
+                values: ResourceUsage.memoryUsageHistory
+                color: Appearance.m3colors.m3primary
+            }
         }
 
         Column {
@@ -71,6 +77,12 @@ StyledPopup {
                     value: root.formatKB(ResourceUsage.swapTotal)
                 }
             }
+
+            Sparkline {
+                width: 132
+                values: ResourceUsage.swapUsageHistory
+                color: Appearance.m3colors.m3primary
+            }
         }
 
         Column {
@@ -88,6 +100,12 @@ StyledPopup {
                     label: Translation.tr("Load:")
                     value: `${Math.round(ResourceUsage.cpuUsage * 100)}%`
                 }
+            }
+
+            Sparkline {
+                width: 132
+                values: ResourceUsage.cpuUsageHistory
+                color: Appearance.m3colors.m3primary
             }
         }
     }
