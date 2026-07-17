@@ -247,6 +247,17 @@ Singleton {
                     property int memoryWarningThreshold: 95
                     property int swapWarningThreshold: 85
                     property int cpuWarningThreshold: 90
+                    property bool showCpuTemperature: true
+                    property bool showGpuTemperature: true
+                    property int cpuTempWarningThreshold: 80  // °C: turns orange
+                    property int cpuTempCriticalThreshold: 90 // °C: turns red
+                    property int gpuTempWarningThreshold: 75  // °C: turns orange
+                    property int gpuTempCriticalThreshold: 85 // °C: turns red
+                    property bool showNetwork: true
+                    // Bytes/s that maps to a "full" wave in the hover card.
+                    property int networkDownFullSpeed: 13107200 // ~100 Mbit/s
+                    property int networkUpFullSpeed: 13107200   // ~100 Mbit/s
+                    property string networkPingHost: "1.1.1.1"
                 }
                 property list<string> screenList: [] // List of names, like "eDP-1", find out with 'hyprctl monitors' command
                 property JsonObject utilButtons: JsonObject {
@@ -257,6 +268,7 @@ Singleton {
                     property bool showDarkModeToggle: true
                     property bool showPerformanceProfileToggle: false
                     property bool showScreenRecord: false
+                    property bool showClipboard: true
                 }
                 property JsonObject workspaces: JsonObject {
                     property bool monochromeIcons: true

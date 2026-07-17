@@ -53,6 +53,22 @@ Item {
         }
 
         Loader {
+            active: Config.options.bar.utilButtons.showClipboard
+            visible: Config.options.bar.utilButtons.showClipboard
+            sourceComponent: CircleUtilButton {
+                Layout.alignment: Qt.AlignVCenter
+                onClicked: Quickshell.execDetached(["qs", "-p", Quickshell.shellPath(""), "ipc", "call", "search", "clipboardToggle"]);
+                MaterialSymbol {
+                    horizontalAlignment: Qt.AlignHCenter
+                    fill: 1
+                    text: "content_paste"
+                    iconSize: Appearance.font.pixelSize.large
+                    color: Appearance.colors.colOnLayer2
+                }
+            }
+        }
+
+        Loader {
             active: Config.options.bar.utilButtons.showColorPicker
             visible: Config.options.bar.utilButtons.showColorPicker
             sourceComponent: CircleUtilButton {

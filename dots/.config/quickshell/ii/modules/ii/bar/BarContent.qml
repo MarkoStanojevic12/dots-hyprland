@@ -118,6 +118,10 @@ Item { // Bar content region
                 Layout.fillWidth: root.useShortenedForm === 2
             }
 
+            Temps {
+                alwaysShowAllResources: root.useShortenedForm === 2
+            }
+
             Media {
                 visible: root.useShortenedForm < 2
                 Layout.fillWidth: true
@@ -327,6 +331,11 @@ Item { // Bar content region
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+            }
+
+            BarGroup {
+                visible: Config.options.bar.resources.showNetwork
+                Net {}
             }
 
             // Weather
