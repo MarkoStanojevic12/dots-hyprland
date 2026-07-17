@@ -28,8 +28,10 @@ cd ~/dots-hyprland
 by copying `dots/.config/*` into `~/.config`.)
 
 ## Pull upstream updates
+One command — fetches end-4, merges into `personal`, applies to live, reloads:
 ```bash
-git fetch upstream
-git checkout main && git merge upstream/main
-git checkout personal && git merge main   # reconcile with my changes
+./update-from-upstream.sh
 ```
+If it reports merge conflicts, resolve them, `git add -A && git commit --no-edit`,
+then re-run it to finish applying to live. It never overwrites matugen-generated
+color files, so theming stays intact.
