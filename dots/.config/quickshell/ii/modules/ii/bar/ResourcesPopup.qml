@@ -12,12 +12,15 @@ StyledPopup {
         return (kb / (1024 * 1024)).toFixed(1) + " GB";
     }
 
-    Row {
+    // fillHeight on each column + a flexible spacer above each Sparkline keeps
+    // the three sparklines aligned along a common bottom edge even though the
+    // columns have different numbers of value rows.
+    RowLayout {
         anchors.centerIn: parent
         spacing: 12
 
-        Column {
-            anchors.top: parent.top
+        ColumnLayout {
+            Layout.fillHeight: true
             spacing: 8
 
             StyledPopupHeaderRow {
@@ -42,17 +45,19 @@ StyledPopup {
                     value: root.formatKB(ResourceUsage.memoryTotal)
                 }
             }
-
+            Item { Layout.fillHeight: true }
             Sparkline {
-                width: 132
+                Layout.fillWidth: true
+                implicitWidth: 132
+                implicitHeight: 34
                 values: ResourceUsage.memoryUsageHistory
                 color: Appearance.m3colors.m3primary
             }
         }
 
-        Column {
+        ColumnLayout {
             visible: ResourceUsage.swapTotal > 0
-            anchors.top: parent.top
+            Layout.fillHeight: true
             spacing: 8
 
             StyledPopupHeaderRow {
@@ -77,16 +82,18 @@ StyledPopup {
                     value: root.formatKB(ResourceUsage.swapTotal)
                 }
             }
-
+            Item { Layout.fillHeight: true }
             Sparkline {
-                width: 132
+                Layout.fillWidth: true
+                implicitWidth: 132
+                implicitHeight: 34
                 values: ResourceUsage.swapUsageHistory
                 color: Appearance.m3colors.m3primary
             }
         }
 
-        Column {
-            anchors.top: parent.top
+        ColumnLayout {
+            Layout.fillHeight: true
             spacing: 8
 
             StyledPopupHeaderRow {
@@ -101,9 +108,11 @@ StyledPopup {
                     value: `${Math.round(ResourceUsage.cpuUsage * 100)}%`
                 }
             }
-
+            Item { Layout.fillHeight: true }
             Sparkline {
-                width: 132
+                Layout.fillWidth: true
+                implicitWidth: 132
+                implicitHeight: 34
                 values: ResourceUsage.cpuUsageHistory
                 color: Appearance.m3colors.m3primary
             }
