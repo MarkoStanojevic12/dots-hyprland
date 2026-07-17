@@ -296,7 +296,9 @@ hl.config({
         zoom_factor = 1,
         zoom_rigid = false,
         zoom_disable_aa = true,
-        hotspot_padding = 1
+        hotspot_padding = 1,
+        no_hardware_cursors = false,
+        use_cpu_buffer = false
     },
 
     xwayland = {

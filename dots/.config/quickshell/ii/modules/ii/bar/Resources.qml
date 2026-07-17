@@ -45,6 +45,9 @@ MouseArea {
             warningThreshold: Config.options.bar.resources.cpuWarningThreshold
         }
 
+        // CPU/GPU temperatures live in their own bar widget (Temps.qml) so they
+        // can have a dedicated wave-based hover; see BarContent.qml.
+
     }
 
     ResourcesPopup {

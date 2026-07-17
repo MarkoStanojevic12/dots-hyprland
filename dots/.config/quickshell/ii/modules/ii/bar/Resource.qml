@@ -8,12 +8,22 @@ Item {
     required property string iconName
     required property double percentage
     property int warningThreshold: 100
+    // Optional second stage (used by temperatures): below warning = normal,
+    // warning..critical = orange, >= critical = red. Leave -1 to keep the
+    // classic single-stage behaviour (warning -> red).
+    property int criticalThreshold: -1
     property bool shown: true
     clip: true
     visible: width > 0 && height > 0
     implicitWidth: resourceRowLayout.x < 0 ? 0 : resourceRowLayout.implicitWidth
     implicitHeight: Appearance.sizes.barHeight
     property bool warning: percentage * 100 >= warningThreshold
+    readonly property bool hasCritical: criticalThreshold > 0
+    readonly property bool critical: hasCritical && percentage * 100 >= criticalThreshold
+    readonly property color colWarn: "#F0A02E" // amber for elevated temps
+    readonly property color colActive: critical ? Appearance.colors.colError
+        : (warning ? (hasCritical ? colWarn : Appearance.colors.colError)
+                   : Appearance.colors.colOnSecondaryContainer)
 
     RowLayout {
         id: resourceRowLayout
@@ -29,8 +39,8 @@ Item {
             lineWidth: Appearance.rounding.unsharpen
             value: percentage
             implicitSize: 20
-            colPrimary: root.warning ? Appearance.colors.colError : Appearance.colors.colOnSecondaryContainer
-            accountForLightBleeding: !root.warning
+            colPrimary: root.colActive
+            accountForLightBleeding: !(root.warning || root.critical)
             enableAnimation: false
 
             Item {
@@ -44,7 +54,9 @@ Item {
                     fill: 1
                     text: iconName
                     iconSize: Appearance.font.pixelSize.normal
-                    color: Appearance.m3colors.m3onSecondaryContainer
+                    // Only the two-stage (temperature) resources tint their icon;
+                    // classic resources keep the static icon colour.
+                    color: root.hasCritical ? root.colActive : Appearance.m3colors.m3onSecondaryContainer
                 }
             }
         }

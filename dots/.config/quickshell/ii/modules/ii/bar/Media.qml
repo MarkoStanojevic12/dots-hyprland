@@ -6,6 +6,7 @@ import qs.modules.common.functions
 
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
 import Quickshell.Services.Mpris
 import Quickshell.Hyprland
 
@@ -37,7 +38,15 @@ Item {
             } else if (event.button === Qt.ForwardButton || event.button === Qt.RightButton) {
                 activePlayer.next();
             } else if (event.button === Qt.LeftButton) {
-                GlobalStates.mediaControlsOpen = !GlobalStates.mediaControlsOpen
+                // Chrome keeps an MPRIS player registered while running, so check for an
+                // actual track title (the same signal the "No media" label uses) rather
+                // than mere player existence.
+                if (activePlayer?.trackTitle) {
+                    GlobalStates.mediaControlsOpen = !GlobalStates.mediaControlsOpen
+                } else {
+                    // Nothing playing: open YouTube Music on workspace 10 and start playback
+                    Quickshell.execDetached(["bash", "-c", "$HOME/.config/hypr/custom/scripts/open-ytmusic.sh"])
+                }
             }
         }
     }

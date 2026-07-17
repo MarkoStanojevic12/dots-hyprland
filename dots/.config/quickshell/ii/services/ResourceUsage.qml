@@ -21,6 +21,19 @@ Singleton {
     property real swapUsedPercentage: swapTotal > 0 ? (swapUsed / swapTotal) : 0
     property real cpuUsage: 0
     property var previousCpuStats
+    property real cpuTemperature: 0 // °C, from k10temp (Tctl)
+    property real gpuTemperature: 0 // °C, NVIDIA dGPU via nvidia-smi
+
+    // Network throughput, summed across all non-loopback interfaces (bytes/s).
+    property real netDownSpeed: 0
+    property real netUpSpeed: 0
+    property var previousNetStats // { rx, tx, time }
+    // Cumulative bytes transferred today (sum of observed positive deltas, so a
+    // counter reset on reboot/iface-down doesn't corrupt the tally). Reset at
+    // midnight when the calendar day changes.
+    property real netDownTotal: 0
+    property real netUpTotal: 0
+    property string netTotalDay: ""
 
     property string maxAvailableMemoryString: kbToGbString(ResourceUsage.memoryTotal)
     property string maxAvailableSwapString: kbToGbString(ResourceUsage.swapTotal)
@@ -67,6 +80,7 @@ Singleton {
             // Reload files
             fileMeminfo.reload()
             fileStat.reload()
+            fileNetdev.reload()
 
             // Parse memory and swap usage
             const textMeminfo = fileMeminfo.text()
@@ -92,6 +106,37 @@ Singleton {
                 previousCpuStats = { total, idle }
             }
 
+            // Parse network throughput. /proc/net/dev columns: iface: rxBytes ...
+            // (col 0) ... txBytes (col 8). Loopback is excluded.
+            const textNetdev = fileNetdev.text()
+            let rxTotal = 0, txTotal = 0
+            for (const line of textNetdev.split("\n")) {
+                const m = line.match(/^\s*([^:]+):\s*(.*)$/)
+                if (!m || m[1].trim() === "lo") continue
+                const nums = m[2].trim().split(/\s+/).map(Number)
+                rxTotal += nums[0] || 0
+                txTotal += nums[8] || 0
+            }
+            const now = Date.now()
+            if (previousNetStats) {
+                const dt = (now - previousNetStats.time) / 1000
+                const downDelta = Math.max(0, rxTotal - previousNetStats.rx)
+                const upDelta = Math.max(0, txTotal - previousNetStats.tx)
+                if (dt > 0) {
+                    netDownSpeed = downDelta / dt
+                    netUpSpeed = upDelta / dt
+                }
+                const today = new Date().toDateString()
+                if (netTotalDay !== today) {
+                    netDownTotal = 0
+                    netUpTotal = 0
+                    netTotalDay = today
+                }
+                netDownTotal += downDelta
+                netUpTotal += upDelta
+            }
+            previousNetStats = { rx: rxTotal, tx: txTotal, time: now }
+
             root.updateHistories()
             interval = Config.options?.resources?.updateInterval ?? 3000
         }
@@ -99,6 +144,7 @@ Singleton {
 
 	FileView { id: fileMeminfo; path: "/proc/meminfo" }
     FileView { id: fileStat; path: "/proc/stat" }
+    FileView { id: fileNetdev; path: "/proc/net/dev" }
 
     Process {
         id: findCpuMaxFreqProc
@@ -112,6 +158,33 @@ Singleton {
             id: outputCollector
             onStreamFinished: {
                 root.maxAvailableCpuString = (parseFloat(outputCollector.text) / 1000).toFixed(0) + " GHz"
+            }
+        }
+    }
+
+    // Poll CPU & GPU temperatures. hwmon numbers can shuffle across reboots,
+    // so the CPU chip is resolved by name (k10temp) rather than a fixed path.
+    Timer {
+        interval: Config.options?.resources?.updateInterval ?? 3000
+        running: true
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: temperatureProc.running = true
+    }
+
+    Process {
+        id: temperatureProc
+        environment: ({
+            LANG: "C",
+            LC_ALL: "C"
+        })
+        command: ["bash", "-c", "cpu=0; for h in /sys/class/hwmon/*; do if [ \"$(cat \"$h/name\" 2>/dev/null)\" = k10temp ]; then cpu=$(cat \"$h/temp1_input\" 2>/dev/null); break; fi; done; gpu=$(nvidia-smi --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>/dev/null | head -n1 | tr -d ' '); echo \"${cpu:-0} ${gpu:-0}\""]
+        stdout: StdioCollector {
+            id: temperatureCollector
+            onStreamFinished: {
+                const parts = temperatureCollector.text.trim().split(/\s+/)
+                root.cpuTemperature = (Number(parts[0]) || 0) / 1000
+                root.gpuTemperature = Number(parts[1]) || 0
             }
         }
     }
