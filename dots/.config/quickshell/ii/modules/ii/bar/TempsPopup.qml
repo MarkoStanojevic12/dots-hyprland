@@ -63,6 +63,8 @@ StyledPopup {
         property real temp
         property int criticalThreshold
         property var wavePoints: []
+        property string topProcess: ""
+        property real topValue: 0
         readonly property real frac: root.heatFrac(temp, criticalThreshold)
         readonly property color accent: root.heatColor(frac)
 
@@ -116,6 +118,32 @@ StyledPopup {
                     color: card.accent
                 }
             }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                visible: card.topProcess !== ""
+                MaterialSymbol {
+                    fill: 1
+                    text: "trending_up"
+                    iconSize: Appearance.font.pixelSize.normal
+                    color: Appearance.colors.colOnSurfaceVariant
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                    text: card.topProcess
+                    font.pixelSize: Appearance.font.pixelSize.small
+                    font.weight: Font.DemiBold
+                    color: Appearance.colors.colOnSurfaceVariant
+                }
+                StyledText {
+                    text: `${Math.round(card.topValue)}%`
+                    font.pixelSize: Appearance.font.pixelSize.small
+                    font.weight: Font.DemiBold
+                    color: card.accent
+                }
+            }
         }
     }
 
@@ -138,6 +166,12 @@ StyledPopup {
             }
         }
 
+        Binding {
+            target: ResourceUsage
+            property: "topProcessPolling"
+            value: root.active
+        }
+
         StyledPopupHeaderRow {
             icon: "thermostat"
             label: Translation.tr("Temperatures")
@@ -149,6 +183,8 @@ StyledPopup {
             temp: ResourceUsage.cpuTemperature
             criticalThreshold: Config.options.bar.resources.cpuTempCriticalThreshold
             wavePoints: root.cpuPoints
+            topProcess: ResourceUsage.topCpuProcess
+            topValue: ResourceUsage.topCpuPercentage
             visible: Config.options.bar.resources.showCpuTemperature
         }
 
@@ -158,6 +194,8 @@ StyledPopup {
             temp: ResourceUsage.gpuTemperature
             criticalThreshold: Config.options.bar.resources.gpuTempCriticalThreshold
             wavePoints: root.gpuPoints
+            topProcess: ResourceUsage.topGpuProcess
+            topValue: ResourceUsage.topGpuUtilization
             // nvidia-smi only; hide when there's no NVIDIA reading (stays 0).
             visible: Config.options.bar.resources.showGpuTemperature && ResourceUsage.gpuTemperature > 0
         }
