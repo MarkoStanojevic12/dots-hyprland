@@ -24,6 +24,14 @@ Singleton {
     property real cpuTemperature: 0 // °C, from k10temp (Tctl)
     property real gpuTemperature: 0 // °C, NVIDIA dGPU via nvidia-smi
 
+    // Top load contributor, surfaced in the Temps hover popup. Polled only while
+    // `topProcessPolling` is set (the popup toggles it on hover) since it spawns top.
+    property bool topProcessPolling: false
+    property string topCpuProcess: ""
+    property real topCpuPercentage: 0  // raw top-style %CPU (can exceed 100 on multi-core hogs)
+    property string topGpuProcess: ""
+    property real topGpuUtilization: 0 // % GPU SM utilization, from nvidia-smi pmon
+
     // Network throughput, summed across all non-loopback interfaces (bytes/s).
     property real netDownSpeed: 0
     property real netUpSpeed: 0
@@ -185,6 +193,40 @@ Singleton {
                 const parts = temperatureCollector.text.trim().split(/\s+/)
                 root.cpuTemperature = (Number(parts[0]) || 0) / 1000
                 root.gpuTemperature = Number(parts[1]) || 0
+            }
+        }
+    }
+
+    Timer {
+        running: root.topProcessPolling
+        interval: Config.options?.resources?.updateInterval ?? 3000
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: topProcessProc.running = true
+    }
+
+    // top's 2nd frame gives instantaneous %CPU (1st is since-boot); we skip top
+    // itself. GPU line stays empty when nvidia-smi pmon reports no active SM use.
+    Process {
+        id: topProcessProc
+        environment: ({
+            LANG: "C",
+            LC_ALL: "C"
+        })
+        command: ["bash", "-c", "c=$(top -bn2 -d 0.3 -w 512 | awk '/^ *PID +USER/{b++;next} b==2 && NF>=12 && $12!=\"top\" {print $12\"|\"$9; exit}'); echo \"CPU|${c:-|}\"; g=$(nvidia-smi pmon -c 1 2>/dev/null | awk 'NF>=8 && $1 !~ /^#/ {s=$4+0; if(s>m){m=s; nm=$NF}} END{if(nm!=\"\") print nm\"|\"m}'); echo \"GPU|${g:-|}\""]
+        stdout: StdioCollector {
+            id: topProcessCollector
+            onStreamFinished: {
+                let cpuName = "", cpuPct = 0, gpuName = "", gpuPct = 0
+                for (const line of topProcessCollector.text.trim().split("\n")) {
+                    const p = line.split("|")
+                    if (p[0] === "CPU") { cpuName = p[1] || ""; cpuPct = Number(p[2]) || 0 }
+                    else if (p[0] === "GPU") { gpuName = p[1] || ""; gpuPct = Number(p[2]) || 0 }
+                }
+                root.topCpuProcess = cpuName
+                root.topCpuPercentage = cpuPct
+                root.topGpuProcess = gpuName
+                root.topGpuUtilization = gpuPct
             }
         }
     }
