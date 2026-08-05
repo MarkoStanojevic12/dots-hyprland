@@ -527,6 +527,9 @@ Singleton {
                     // CLI model alias ("opus", "sonnet[1m]", "haiku"…).
                     // Empty = whatever `claude` itself defaults to.
                     property string model: ""
+                    // "ask": confirm each tool the CLI isn't already allowed
+                    // to use. "bypass": let it act unattended.
+                    property string permissionMode: "ask"
                     property string systemPrompt: "You are running in a desktop sidebar panel on Hyprland, in a column roughly 500px wide. Keep responses short and scannable — the user is reading them in a narrow column, not a terminal. Lead with the answer, skip preamble, and don't recap what you just did unless asked."
                 }
                 property JsonObject booru: JsonObject {
