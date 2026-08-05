@@ -15,6 +15,58 @@ Singleton {
     }
 
     /**
+     * Gives inline `code` spans a filled background, the way editors do.
+     *
+     * Qt's markdown renderer sets a monospace font for inline code but no
+     * background, so short identifiers don't stand out mid-sentence. It does
+     * honour inline HTML, so the spans are rewritten into styled ones.
+     *
+     * Fenced blocks never reach here — they are split out before rendering —
+     * so only genuine inline spans are touched.
+     *
+     * QTextDocument ignores padding and border on inline spans — only colour,
+     * font and letter-spacing land — so the breathing room is a space inside
+     * the highlight. It has to be a non-breaking one: an ordinary leading
+     * space collapses against the space already in the sentence, which leaves
+     * the highlight padded on the right and flush on the left.
+     *
+     * @param { string } markdown
+     * @param { string } background CSS colour, e.g. "#363435"
+     * @param { string } foreground CSS colour
+     * @param { string } fontFamily monospace family name
+     * @param { int } fontSize in px
+     * @returns { string }
+     */
+    function styleInlineCode(markdown, background, foreground, fontFamily, fontSize) {
+        if (!markdown || markdown.indexOf("`") < 0) return markdown ?? "";
+        const style = `background-color:${background}; color:${foreground};`
+            + ` font-family:'${fontFamily}'; font-size:${fontSize}px;`;
+        return markdown.replace(/(\[)?`([^`\n]+)`(\]\()?/g, (match, before, code, after) => {
+            // Inline HTML inside a link label stops Qt parsing the link at
+            // all, so code used as a link label keeps its plain code span —
+            // it already stands out by being a coloured link.
+            if (before || after) return match;
+            // Markdown escaped these for us; as raw HTML they would be parsed.
+            const escaped = code
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+            return `<span style="${style}">&nbsp;${escaped}&nbsp;</span>`;
+        });
+    }
+
+    /**
+     * Drops the alpha channel from a QML colour so it can go in CSS, which
+     * QTextDocument parses as #rrggbb only.
+     * @param { color } color
+     * @returns { string }
+     */
+    function cssColor(color) {
+        const text = color.toString();
+        return text.length === 9 ? `#${text.slice(3)}` : text;
+    }
+
+    /**
      * Returns the domain of the passed in url or null
      * @param { string } url
      * @returns { string| null }

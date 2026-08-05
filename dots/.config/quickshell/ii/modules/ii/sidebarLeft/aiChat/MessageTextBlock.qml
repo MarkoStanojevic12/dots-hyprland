@@ -21,6 +21,25 @@ ColumnLayout {
     property var messageData: {}
     property bool done: true
     property bool forceDisableChunkSplitting: false
+    // Optional overrides. Left unset, links open in the system handler and
+    // keep whatever colour the style gives them.
+    property var linkHandler: null
+    property color linkColor: "transparent"
+
+    // Inline `code` gets a filled background so short identifiers stand out
+    // mid-sentence, the way they do in an editor.
+    property bool highlightInlineCode: true
+    // Opaque surface roles rather than the colLayer* ones: those carry an
+    // alpha channel for the panel's transparency, and CSS here can't express
+    // it — stripping the alpha turns a faint tint into a solid slab.
+    // One step above the message's own surface reads as a chip without
+    // glaring, and full-strength onSurface makes the code brighter than the
+    // prose around it.
+    property color inlineCodeBackground: Appearance.m3colors.m3surfaceContainerHighest
+    property color inlineCodeColor: Appearance.m3colors.m3onSurface
+    // Monospace sits optically larger than the reading face at a matched
+    // size, so it's nudged down to keep the line rhythm even.
+    property int inlineCodeFontSize: Math.round(Appearance.font.pixelSize.small * 0.94)
 
     property list<string> renderedLatexHashes: []
     property string renderedSegmentContent: ""
@@ -161,7 +180,14 @@ ColumnLayout {
             wrapMode: TextEdit.Wrap
             color: root.messageData?.thinking ? Appearance.colors.colSubtext : Appearance.colors.colOnLayer1
             textFormat: renderMarkdown ? TextEdit.MarkdownText : TextEdit.PlainText
-            text: modelData
+            // Left raw while editing, so what's edited is what was written.
+            text: (root.renderMarkdown && root.highlightInlineCode && !root.editing)
+                ? StringUtils.styleInlineCode(modelData,
+                    StringUtils.cssColor(root.inlineCodeBackground),
+                    StringUtils.cssColor(root.inlineCodeColor),
+                    Appearance.font.family.monospace,
+                    root.inlineCodeFontSize)
+                : modelData
 
             onTextChanged: {
                 if (!root.editing) return
@@ -169,8 +195,19 @@ ColumnLayout {
             }
 
             onLinkActivated: (link) => {
+                if (root.linkHandler) {
+                    root.linkHandler(link)
+                    return
+                }
                 Qt.openUrlExternally(link)
                 GlobalStates.sidebarLeftOpen = false
+            }
+
+            Binding { // Only takes effect when a colour was actually asked for
+                target: textArea
+                property: "palette.link"
+                value: root.linkColor
+                when: root.linkColor.a > 0
             }
 
             MouseArea { // Pointing hand for links
