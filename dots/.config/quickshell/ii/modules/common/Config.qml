@@ -516,6 +516,19 @@ Singleton {
                 property JsonObject ai: JsonObject {
                     property bool textFadeIn: false
                 }
+                property JsonObject claude: JsonObject {
+                    property bool enable: true
+                    // Empty = autodetect: `claude` on PATH, else the copy bundled
+                    // with the VS Code extension.
+                    property string cliPath: ""
+                    // Empty = home directory. The agent runs unattended, so this
+                    // is also its blast radius.
+                    property string workingDirectory: ""
+                    // CLI model alias ("opus", "sonnet[1m]", "haiku"…).
+                    // Empty = whatever `claude` itself defaults to.
+                    property string model: ""
+                    property string systemPrompt: "You are running in a desktop sidebar panel on Hyprland, in a column roughly 500px wide. Keep responses short and scannable — the user is reading them in a narrow column, not a terminal. Lead with the answer, skip preamble, and don't recap what you just did unless asked."
+                }
                 property JsonObject booru: JsonObject {
                     property bool allowNsfw: false
                     property string defaultProvider: "yandere"
