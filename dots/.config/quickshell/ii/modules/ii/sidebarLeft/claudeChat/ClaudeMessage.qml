@@ -1,3 +1,4 @@
+import qs
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
@@ -91,11 +92,25 @@ Item {
 
             FadeLoader {
                 id: loadingIndicatorLoader
-                anchors.centerIn: parent
+                anchors.left: parent.left
+                anchors.leftMargin: 4
+                anchors.verticalCenter: parent.verticalCenter
                 shown: root.messageBlocks.length < 1 && !(root.messageData?.done ?? true)
-                sourceComponent: MaterialLoadingIndicator {
-                    implicitSize: 28
-                    loading: true
+                sourceComponent: RowLayout {
+                    spacing: 8
+
+                    MaterialLoadingIndicator {
+                        implicitSize: 28
+                        loading: true
+                    }
+                    StyledText {
+                        // The thinking text itself is never sent to clients,
+                        // so its size is the only thing there is to report.
+                        visible: (root.messageData?.thinkingTokens ?? 0) > 0
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        color: Appearance.colors.colSubtext
+                        text: Translation.tr("Thinking… ~%1 tokens").arg(root.messageData?.thinkingTokens ?? 0)
+                    }
                 }
             }
         }
@@ -127,7 +142,13 @@ Item {
                 DelegateChoice {
                     roleValue: "text"
                     MessageTextBlock {
-                        segmentContent: modelData.content
+                        // Paths Claude mentions become links to the file itself.
+                        segmentContent: ClaudeCode.linkifyPaths(modelData.content)
+                        linkColor: Appearance.colors.colPrimary
+                        linkHandler: link => {
+                            ClaudeCode.openFileReference(link);
+                            GlobalStates.sidebarLeftOpen = false;
+                        }
                         messageData: root.messageData
                         done: root.messageData?.done ?? false
                         forceDisableChunkSplitting: root.messageData?.content.includes("```") ?? true

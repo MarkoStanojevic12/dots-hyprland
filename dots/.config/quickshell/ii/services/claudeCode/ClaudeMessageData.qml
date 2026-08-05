@@ -13,8 +13,11 @@ QtObject {
     property bool done: false
     property bool isError: false
 
-    // [{ id, name, detail, status: "running" | "done" | "error" }]
+    // [{ id, name, icon, detail, input, status: "running" | "done" | "error" }]
     property var toolCalls: []
+
+    // The thinking text never reaches the client, only an estimate of its size.
+    property int thinkingTokens: 0
 
     property string model
 }

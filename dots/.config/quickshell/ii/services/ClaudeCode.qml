@@ -2,6 +2,7 @@ pragma Singleton
 pragma ComponentBehavior: Bound
 
 import qs.modules.common
+import qs.modules.common.functions
 import qs.services.claudeCode
 import Quickshell
 import Quickshell.Io
@@ -84,6 +85,471 @@ Singleton {
     }
 
     // ------------------------------------------------------------------
+    // Tool permissions
+    // ------------------------------------------------------------------
+
+    // With --permission-prompt-tool the CLI asks before each tool that isn't
+    // already allowed, over the same control channel as set_model. The mode
+    // decides whether it bothers: bypassPermissions never asks.
+    readonly property string permissionMode: options?.permissionMode ?? "ask"
+    readonly property bool askPermission: root.permissionMode !== "bypass"
+
+    // { requestId, toolName, displayName, description, input, suggestions, toolUseId }
+    property var pendingPermission: null
+
+    function setPermissionMode(mode) {
+        if (root.options) root.options.permissionMode = mode;
+        if (claudeProcess.running) {
+            root.sendControlRequest("set_permission_mode", {
+                mode: mode === "bypass" ? "bypassPermissions" : "default"
+            });
+        }
+        // A prompt already on screen belongs to the old mode.
+        if (mode === "bypass" && root.pendingPermission) {
+            root.answerPermission("allow", null);
+        }
+    }
+
+    function handlePermissionRequest(event) {
+        const request = event.request;
+        root.pendingPermission = {
+            requestId: event.request_id,
+            toolName: request.tool_name ?? "",
+            displayName: request.display_name ?? request.tool_name ?? "",
+            description: request.description ?? "",
+            input: request.input ?? ({}),
+            suggestions: request.permission_suggestions ?? [],
+            toolUseId: request.tool_use_id ?? ""
+        };
+    }
+
+    // `remember` is one of the CLI's own permission_suggestions, or null for
+    // a one-off answer.
+    function answerPermission(behavior, remember) {
+        const pending = root.pendingPermission;
+        if (!pending) return;
+        root.pendingPermission = null;
+
+        const response = behavior === "allow"
+            ? { behavior: "allow", updatedInput: pending.input }
+            : { behavior: "deny", message: Translation.tr("Declined in the sidebar.") };
+        if (behavior === "allow" && remember) response.updatedPermissions = [remember];
+
+        claudeProcess.write(JSON.stringify({
+            type: "control_response",
+            response: {
+                subtype: "success",
+                request_id: pending.requestId,
+                response: response
+            }
+        }) + "\n");
+    }
+
+    // The rule-based suggestion is the narrow one ("this exact command"), so
+    // it is what "always" should mean; mode changes are a blunter fallback.
+    function rememberableSuggestion(pending) {
+        if (!pending) return null;
+        const suggestions = pending.suggestions ?? [];
+        return suggestions.find(s => s.type === "addRules")
+            ?? suggestions.find(s => s.type === "setMode")
+            ?? null;
+    }
+
+    // ------------------------------------------------------------------
+    // Rate limits
+    // ------------------------------------------------------------------
+
+    // { status, resetsAt, rateLimitType, isUsingOverage } — the number that
+    // actually means something on a subscription, unlike a dollar figure.
+    property var rateLimit: null
+
+    readonly property string rateLimitResetText: {
+        const resetsAt = root.rateLimit?.resetsAt ?? 0;
+        if (resetsAt <= 0) return "";
+        const remaining = resetsAt * 1000 - Date.now();
+        if (remaining <= 0) return "";
+        const hours = Math.floor(remaining / 3600000);
+        const minutes = Math.floor((remaining % 3600000) / 60000);
+        return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+    }
+
+    // ------------------------------------------------------------------
+    // Slash commands
+    // ------------------------------------------------------------------
+
+    // [{ name, description, argumentHint }] — reported by the CLI in reply to
+    // the initialize handshake.
+    property var slashCommands: []
+
+    // ------------------------------------------------------------------
+    // Surviving a shell reload
+    // ------------------------------------------------------------------
+
+    // Editing any QML file the shell has loaded makes Quickshell hot-reload,
+    // which tears this singleton down and kills the CLI with it — mid-turn,
+    // with no result event and no error. Since the agent is regularly asked to
+    // edit this very config, that is a routine event rather than an edge case.
+    // The conversation is remembered on disk so it comes back afterwards.
+    readonly property string sessionStatePath: FileUtils.trimFileProtocol(`${Directories.state}/user/claudeSession.json`)
+    property int restoreAttempts: 0
+
+    // What is on screen is saved rather than the CLI's own transcript: the
+    // transcript lags the stream by a beat, and a reload lands mid-turn, so
+    // the transcript is missing precisely the reply that was interrupted.
+    function rememberSession() {
+        if (root.sessionId.length === 0) return;
+        sessionState.sessionId = root.sessionId;
+        sessionState.workingDirectory = root.workingDirectory;
+        sessionState.messages = root.messageIDs.slice(-200).map(id => {
+            const message = root.messageByID[id];
+            return {
+                role: message.role,
+                content: message.content,
+                model: message.model,
+                done: message.done,
+                isError: message.isError,
+                thinkingTokens: message.thinkingTokens,
+                // Inputs can carry whole file contents; the chip detail is
+                // enough to redraw the history.
+                toolCalls: message.toolCalls.map(call => ({
+                    id: call.id,
+                    name: call.name,
+                    icon: call.icon,
+                    detail: call.detail,
+                    status: call.status
+                }))
+            };
+        });
+        sessionStateFile.writeAdapter();
+    }
+
+    function forgetSession() {
+        sessionState.sessionId = "";
+        sessionState.workingDirectory = "";
+        sessionState.messages = [];
+        sessionStateFile.writeAdapter();
+    }
+
+    function restoreLastSession() {
+        if (root.messageIDs.length > 0 || root.busy) return;
+        if (!Config.ready) {
+            // The config lands asynchronously and decides the working
+            // directory, which is what makes a stored session ours or not.
+            if (root.restoreAttempts++ < 20) restoreTimer.restart();
+            return;
+        }
+        if (sessionState.sessionId.length === 0) return;
+        if (sessionState.workingDirectory !== root.workingDirectory) return;
+
+        const stored = sessionState.messages ?? [];
+        if (stored.length === 0) {
+            // Nothing of our own saved, but the CLI's transcript may still
+            // have the conversation.
+            root.loadSession(sessionState.sessionId);
+            return;
+        }
+
+        root.resumeSessionId = sessionState.sessionId;
+        for (const entry of stored) {
+            const id = root.addMessage(entry.role, entry.content, entry.isError);
+            const message = root.messageByID[id];
+            if (!message) continue;
+            message.model = entry.model ?? "";
+            message.toolCalls = (entry.toolCalls ?? []).map(call =>
+                call.status === "running" ? Object.assign({}, call, { status: "done" }) : call);
+            message.done = true;
+        }
+
+        // A reply cut off by the reload should say so rather than just stop.
+        const last = root.messageByID[root.messageIDs[root.messageIDs.length - 1]];
+        if (last && last.role === "assistant" && stored[stored.length - 1].done === false) {
+            last.content += (last.content.length > 0 ? "\n\n" : "")
+                + Translation.tr("_Interrupted — the shell reloaded. Ask again to continue._");
+        }
+    }
+
+    Timer {
+        id: restoreTimer
+        interval: 250
+        onTriggered: root.restoreLastSession()
+    }
+
+    Timer { // Checkpoint mid-turn, since that is when a reload tends to hit
+        id: checkpointTimer
+        interval: 2000
+        repeat: true
+        running: root.busy
+        onTriggered: root.rememberSession()
+    }
+
+    FileView {
+        id: sessionStateFile
+        path: root.sessionStatePath
+        watchChanges: false
+        onLoaded: restoreTimer.restart()
+        onLoadFailed: error => {
+            if (error === FileViewError.FileNotFound) sessionStateFile.writeAdapter();
+        }
+
+        JsonAdapter {
+            id: sessionState
+            property string sessionId: ""
+            property string workingDirectory: ""
+            property list<var> messages: []
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Working directory
+    // ------------------------------------------------------------------
+
+    // [{ path, sessions, mtime }] — directories Claude has been used in.
+    property var knownDirectories: []
+    property bool directoriesLoading: false
+    property string directoryError: ""
+
+    function refreshDirectories() {
+        if (root.directoriesLoading) return;
+        root.directoriesLoading = true;
+        listDirsProcess.running = false;
+        listDirsProcess.running = true;
+    }
+
+    function setWorkingDirectory(path) {
+        const trimmed = (path ?? "").trim();
+        if (trimmed.length === 0 || root.busy) return;
+        root.directoryError = "";
+        resolveDirProcess.candidate = trimmed;
+        resolveDirProcess.running = false;
+        resolveDirProcess.running = true;
+    }
+
+    function applyWorkingDirectory(path) {
+        if (path === root.workingDirectory) return;
+        // The conversation and its history both belong to the old directory,
+        // so moving means starting over rather than carrying them across.
+        root.clearMessages();
+        root.sessions = [];
+        if (root.options) root.options.workingDirectory = path;
+    }
+
+    Process {
+        id: listDirsProcess
+        command: ["python3", root.sessionsScript, "dirs"]
+        stdout: StdioCollector {
+            id: listDirsCollector
+            onStreamFinished: {
+                try {
+                    root.knownDirectories = JSON.parse(listDirsCollector.text);
+                } catch (e) {
+                    root.knownDirectories = [];
+                }
+                root.directoriesLoading = false;
+            }
+        }
+    }
+
+    Process {
+        id: resolveDirProcess
+        property string candidate: ""
+        command: ["python3", root.sessionsScript, "resolve", resolveDirProcess.candidate]
+        stdout: StdioCollector {
+            id: resolveDirCollector
+            onStreamFinished: {
+                let resolved;
+                try {
+                    resolved = JSON.parse(resolveDirCollector.text);
+                } catch (e) {
+                    root.directoryError = Translation.tr("Could not read that path.");
+                    return;
+                }
+                if (resolved.exists) {
+                    root.applyWorkingDirectory(resolved.path);
+                } else {
+                    root.directoryError = Translation.tr("No such directory: %1").arg(resolved.path);
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Conversation history
+    // ------------------------------------------------------------------
+
+    // The CLI keeps a JSONL transcript per conversation. The helper script
+    // turns those into something renderable; resuming one is just --resume.
+    readonly property string sessionsScript: Quickshell.shellPath("scripts/claude/sessions.py")
+
+    // [{ id, title, mtime, turns }] for the working directory, newest first.
+    property var sessions: []
+    property bool sessionsLoading: false
+
+    // Set when a past conversation is opened, so the next spawn continues it.
+    property string resumeSessionId: ""
+    property string spawnResumeId: ""
+
+    readonly property string conversationTitle: {
+        for (const id of root.messageIDs) {
+            const message = root.messageByID[id];
+            if (message?.role === "user" && message.content.length > 0) {
+                return message.content.split("\n")[0].substring(0, 90);
+            }
+        }
+        return "";
+    }
+
+    function refreshSessions() {
+        if (root.sessionsLoading) return;
+        root.sessionsLoading = true;
+        listSessionsProcess.running = false;
+        listSessionsProcess.running = true;
+    }
+
+    function loadSession(id) {
+        if (root.busy || id.length === 0) return;
+        root.clearMessages();
+        root.resumeSessionId = id;
+        root.sessionId = id;
+        root.rememberSession();
+        readSessionProcess.targetId = id;
+        readSessionProcess.running = false;
+        readSessionProcess.running = true;
+    }
+
+    function applyTranscript(transcript) {
+        for (const entry of transcript) {
+            const id = root.addMessage(entry.role, entry.text);
+            const message = root.messageByID[id];
+            if (!message) continue;
+            message.done = true;
+            message.model = entry.model ?? "";
+            message.toolCalls = (entry.tools ?? []).map(tool => ({
+                id: tool.id,
+                name: tool.name,
+                icon: root.toolIcons[tool.name] ?? "build",
+                detail: root.toolDetail(tool.name, tool.input),
+                // Anything in a finished transcript has already run.
+                status: "done"
+            }));
+        }
+    }
+
+    Process {
+        id: listSessionsProcess
+        command: ["python3", root.sessionsScript, "list", root.workingDirectory]
+        stdout: StdioCollector {
+            id: listSessionsCollector
+            onStreamFinished: {
+                try {
+                    root.sessions = JSON.parse(listSessionsCollector.text);
+                } catch (e) {
+                    root.sessions = [];
+                    console.warn("[ClaudeCode] could not read session list:", e);
+                }
+                root.sessionsLoading = false;
+            }
+        }
+        stderr: SplitParser {
+            onRead: data => {
+                if (data.trim().length > 0) console.warn("[ClaudeCode/sessions]", data);
+            }
+        }
+    }
+
+    Process {
+        id: readSessionProcess
+        property string targetId: ""
+        command: ["python3", root.sessionsScript, "read", root.workingDirectory, readSessionProcess.targetId]
+        stdout: StdioCollector {
+            id: readSessionCollector
+            onStreamFinished: {
+                try {
+                    root.applyTranscript(JSON.parse(readSessionCollector.text));
+                } catch (e) {
+                    root.addMessage("interface", Translation.tr("Could not read that conversation."), true);
+                }
+            }
+        }
+        stderr: SplitParser {
+            onRead: data => {
+                if (data.trim().length > 0) console.warn("[ClaudeCode/sessions]", data);
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // File references
+    // ------------------------------------------------------------------
+
+    // Claude writes paths as inline code spans rather than links, so they are
+    // turned into links at render time. The raw message content is left alone:
+    // the streaming reconciliation compares it against what the CLI sent.
+
+    // Recognised suffixes, so a bare `Config.qml` is treated as a file while
+    // `Object.assign` is not. Anything containing a slash is a path regardless.
+    readonly property var fileExtensions: [
+        "qml", "js", "mjs", "ts", "tsx", "jsx", "py", "sh", "bash", "fish", "zsh",
+        "rs", "go", "c", "h", "cpp", "hpp", "java", "kt", "rb", "php", "cs", "swift",
+        "lua", "vim", "json", "yaml", "yml", "toml", "ini", "conf", "cfg", "rc",
+        "xml", "html", "css", "scss", "md", "txt", "log", "csv", "sql", "patch", "diff",
+        "svg", "png", "jpg", "jpeg", "gif", "webp", "pdf", "desktop", "service"
+    ]
+
+    function resolvePath(path) {
+        const home = Directories.home.replace(/^file:\/\//, "");
+        if (path === "~") return home;
+        if (path.startsWith("~/")) return home + path.slice(1);
+        if (path.startsWith("/")) return path;
+        return `${root.workingDirectory}/${path.replace(/^\.\//, "")}`;
+    }
+
+    function looksLikeFilePath(text) {
+        if (text.length === 0 || text.length > 240) return false;
+        if (/\s/.test(text)) return false;
+        if (/^[a-z][a-z0-9+.-]*:\/\//i.test(text)) return false; // A URL, not a path
+        if (/^(~\/|\.{1,2}\/|\/)/.test(text)) return true;
+        if (text.includes("/")) return true;
+        if (!text.includes(".")) return false;
+        return root.fileExtensions.includes(text.split(".").pop().toLowerCase());
+    }
+
+    function linkifyPaths(text) {
+        if (!text || !text.includes("`")) return text ?? "";
+        return text.replace(/(!?\[)?`([^`\n]+)`(\]\()?/g, (match, before, inner, after) => {
+            // A code span that is already a link label stays as it is.
+            if (before || after) return match;
+            const trimmed = inner.trim();
+            // Trailing :42 is a line number, not part of the name.
+            const withLine = trimmed.match(/^(.*[^:]):(\d+)$/);
+            const path = withLine ? withLine[1] : trimmed;
+            if (!root.looksLikeFilePath(path)) return match;
+            const target = `file://${encodeURI(root.resolvePath(path))}${withLine ? `#L${withLine[2]}` : ""}`;
+            return `[\`${inner}\`](${target})`;
+        });
+    }
+
+    // Whichever editor is around. The desktop's default handler is a poor
+    // fallback for source files — it tends to route them to a word processor
+    // or a browser — so it is only used when no editor turns up.
+    property string editorPath: ""
+
+    function openFileReference(link) {
+        const url = String(link);
+        if (!url.startsWith("file://")) {
+            Qt.openUrlExternally(url);
+            return;
+        }
+        const hash = url.indexOf("#L");
+        const line = hash >= 0 ? url.slice(hash + 2) : "";
+        const path = decodeURI(url.slice("file://".length, hash >= 0 ? hash : undefined));
+        if (root.editorPath.length > 0) {
+            Quickshell.execDetached([root.editorPath, "--goto", line.length > 0 ? `${path}:${line}` : path]);
+        } else {
+            Qt.openUrlExternally(`file://${encodeURI(path)}`);
+        }
+    }
+
+    // ------------------------------------------------------------------
     // Context window usage
     // ------------------------------------------------------------------
 
@@ -119,6 +585,13 @@ Singleton {
     // Public API
     // ------------------------------------------------------------------
 
+    // Anything typed while a turn is running, sent in order once it finishes.
+    property var queuedMessages: []
+
+    function unqueueMessage(index) {
+        root.queuedMessages = root.queuedMessages.filter((_, i) => i !== index);
+    }
+
     function sendMessage(text) {
         const trimmed = text.trim();
         if (trimmed.length === 0) return;
@@ -126,7 +599,10 @@ Singleton {
             root.addMessage("interface", Translation.tr("Claude Code CLI not found. Set sidebar.claude.cliPath in the config."), true);
             return;
         }
-        if (root.busy) return;
+        if (root.busy) {
+            root.queuedMessages = [...root.queuedMessages, trimmed];
+            return;
+        }
 
         root.addMessage("user", trimmed);
         root.busy = true;
@@ -136,7 +612,10 @@ Singleton {
 
         if (!claudeProcess.running) {
             root.spawnModel = root.selectedModel;
+            root.spawnResumeId = root.resumeSessionId;
             claudeProcess.running = true;
+            // The reply to this carries the slash command list.
+            root.sendControlRequest("initialize", { hooks: ({}) });
         }
         claudeProcess.write(JSON.stringify({
             type: "user",
@@ -154,6 +633,10 @@ Singleton {
         root.sessionId = "";
         root.busy = false;
         root.contextTokens = 0;
+        root.pendingPermission = null;
+        root.queuedMessages = [];
+        root.resumeSessionId = "";
+        root.forgetSession();
         // Dropping the process drops the CLI-side conversation with it.
         claudeProcess.running = false;
     }
@@ -173,8 +656,12 @@ Singleton {
 
     function interrupt() {
         if (!root.busy) return;
+        // Answering first keeps the CLI from blocking on a prompt nobody
+        // will ever click once the process is gone.
+        if (root.pendingPermission) root.answerPermission("deny", null);
         claudeProcess.running = false;
         root.busy = false;
+        root.queuedMessages = [];
         const current = root.messageByID[root.currentAssistantId];
         if (current) {
             current.done = true;
@@ -281,6 +768,8 @@ Singleton {
             name: name,
             icon: root.toolIcons[name] ?? "build",
             detail: root.toolDetail(name, input),
+            // Kept so the chip can expand into a diff or a todo list.
+            input: input ?? ({}),
             status: "running"
         }];
     }
@@ -302,6 +791,7 @@ Singleton {
             if (event.subtype === "init") {
                 root.sessionId = event.session_id ?? root.sessionId;
                 root.modelName = event.model ?? root.modelName;
+                root.rememberSession();
             }
             break;
 
@@ -322,10 +812,22 @@ Singleton {
             root.finishTurn(event);
             break;
 
+        case "control_request":
+            if (event.request?.subtype === "can_use_tool") {
+                root.handlePermissionRequest(event);
+            }
+            break;
+
         case "control_response":
             if (event.response?.subtype === "error") {
                 console.warn("[ClaudeCode] control request failed:", event.response.error);
+            } else if (event.response?.response?.commands) {
+                root.slashCommands = event.response.response.commands;
             }
+            break;
+
+        case "rate_limit_event":
+            root.rateLimit = event.rate_limit_info ?? null;
             break;
         }
     }
@@ -342,6 +844,13 @@ Singleton {
             const chunk = event.delta.text ?? "";
             root.streamedText += chunk;
             root.appendAssistantText(chunk);
+        } else if (event.type === "content_block_delta" && event.delta?.type === "thinking_delta") {
+            // The thinking text itself never arrives — only a running estimate
+            // of how much of it there is — so that count is what we show.
+            const message = root.currentAssistant();
+            if (message) {
+                message.thinkingTokens = Math.max(message.thinkingTokens, event.delta.estimated_tokens ?? 0);
+            }
         }
     }
 
@@ -422,6 +931,14 @@ Singleton {
         root.currentAssistantId = "";
         root.streamedText = "";
         root.busy = false;
+        root.pendingPermission = null;
+        root.rememberSession();
+
+        if (root.queuedMessages.length > 0) {
+            const next = root.queuedMessages[0];
+            root.queuedMessages = root.queuedMessages.slice(1);
+            Qt.callLater(() => root.sendMessage(next));
+        }
     }
 
     // ------------------------------------------------------------------
@@ -440,14 +957,17 @@ Singleton {
             "--output-format", "stream-json",
             "--verbose",
             "--include-partial-messages",
-            // The sidebar has no UI for approving individual tool calls, and
-            // the user opted into an agent that just gets on with it.
-            "--permission-mode", "bypassPermissions",
+            // Route permission questions to us over the control channel. The
+            // mode below decides whether the CLI bothers asking at all, so
+            // this stays on and the toggle stays live.
+            "--permission-prompt-tool", "stdio",
+            "--permission-mode", root.askPermission ? "default" : "bypassPermissions",
             // Skip the user's MCP servers: they add seconds of startup and a
             // lot of tool-schema tokens that a desktop sidebar has no use for.
             "--strict-mcp-config",
             "--append-system-prompt", root.options?.systemPrompt ?? "",
-            ...(root.spawnModel.length > 0 ? ["--model", root.spawnModel] : [])
+            ...(root.spawnModel.length > 0 ? ["--model", root.spawnModel] : []),
+            ...(root.spawnResumeId.length > 0 ? ["--resume", root.spawnResumeId] : [])
         ]
 
         stdout: SplitParser {
@@ -498,6 +1018,20 @@ Singleton {
                 const path = data.trim();
                 if (path.length > 0 && root.cliPath.length === 0) {
                     root.cliPath = path;
+                }
+            }
+        }
+    }
+
+    Process {
+        id: findEditorProcess
+        running: true
+        command: ["bash", "-c", "command -v code || command -v codium || command -v code-insiders || true"]
+        stdout: SplitParser {
+            onRead: data => {
+                const path = data.trim();
+                if (path.length > 0 && root.editorPath.length === 0) {
+                    root.editorPath = path;
                 }
             }
         }

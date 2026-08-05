@@ -19,6 +19,41 @@ Item {
     property real padding: 4
     property var inputField: messageInputField
     property bool modelPickerShown: false
+    property bool historyShown: false
+
+    property bool directoryPickerShown: false
+
+    // Slash commands are offered only while the whole message is still just
+    // the command being typed, so a "/" mid-sentence doesn't trigger them.
+    readonly property var slashSuggestions: {
+        const text = messageInputField.text;
+        if (!text.startsWith("/") || text.includes("\n") || text.includes(" ")) return [];
+        const query = text.slice(1).toLowerCase();
+        return (ClaudeCode.slashCommands ?? [])
+            .filter(command => command.name.toLowerCase().includes(query))
+            .slice(0, 40);
+    }
+
+    function applySlashCommand(command) {
+        messageInputField.text = `/${command.name} `;
+        messageInputField.cursorPosition = messageInputField.text.length;
+        messageInputField.forceActiveFocus();
+    }
+
+    function toggleHistory() {
+        root.historyShown = !root.historyShown;
+        if (root.historyShown) ClaudeCode.refreshSessions();
+    }
+
+    function toggleDirectoryPicker() {
+        root.directoryPickerShown = !root.directoryPickerShown;
+        if (root.directoryPickerShown) {
+            ClaudeCode.directoryError = "";
+            ClaudeCode.refreshDirectories();
+            directoryInput.text = ClaudeCode.workingDirectory;
+            directoryInput.forceActiveFocus();
+        }
+    }
 
     onFocusChanged: focus => {
         if (focus) root.inputField.forceActiveFocus();
@@ -28,6 +63,7 @@ Item {
         messageInputField.forceActiveFocus();
         if ((event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier) && event.key === Qt.Key_O) {
             ClaudeCode.clearMessages();
+            root.historyShown = false;
             event.accepted = true;
         }
     }
@@ -48,11 +84,130 @@ Item {
     }
 
     ColumnLayout {
+        id: mainColumn
         anchors {
             fill: parent
             margins: root.padding
         }
         spacing: root.padding
+
+        RowLayout { // Header
+            Layout.fillWidth: true
+            spacing: root.padding
+
+            RippleButton { // Which conversation this is, and the way into the rest
+                id: historyButton
+                Layout.fillWidth: true
+                implicitHeight: 32
+                buttonRadius: Appearance.rounding.small
+                toggled: root.historyShown
+                onClicked: root.toggleHistory()
+
+                contentItem: RowLayout {
+                    anchors {
+                        fill: parent
+                        leftMargin: 8
+                        rightMargin: 6
+                    }
+                    spacing: 6
+
+                    MaterialSymbol {
+                        iconSize: Appearance.font.pixelSize.larger
+                        color: historyButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer1
+                        text: "history"
+                    }
+                    StyledText {
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                        font.pixelSize: Appearance.font.pixelSize.small
+                        color: historyButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer1
+                        text: ClaudeCode.conversationTitle.length > 0
+                            ? ClaudeCode.conversationTitle
+                            : Translation.tr("New conversation")
+                    }
+                    MaterialSymbol {
+                        iconSize: Appearance.font.pixelSize.normal
+                        color: historyButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colSubtext
+                        text: root.historyShown ? "expand_less" : "expand_more"
+                    }
+                }
+
+                StyledToolTip {
+                    text: Translation.tr("Past conversations in %1").arg(ClaudeCode.workingDirectory)
+                }
+            }
+
+            RippleButton { // Start over
+                implicitWidth: 32
+                implicitHeight: 32
+                buttonRadius: Appearance.rounding.small
+                enabled: ClaudeCode.messageIDs.length > 0 && !ClaudeCode.busy
+                onClicked: {
+                    ClaudeCode.clearMessages();
+                    root.historyShown = false;
+                }
+
+                contentItem: MaterialSymbol {
+                    anchors.centerIn: parent
+                    horizontalAlignment: Text.AlignHCenter
+                    iconSize: Appearance.font.pixelSize.larger
+                    color: parent.enabled ? Appearance.colors.colOnLayer1 : Appearance.colors.colOnLayer1Inactive
+                    text: "add_comment"
+                }
+
+                StyledToolTip {
+                    text: Translation.tr("New conversation (Ctrl+Shift+O)")
+                }
+            }
+        }
+
+        Revealer { // History list
+            vertical: true
+            reveal: root.historyShown
+
+            Rectangle {
+                width: mainColumn.width
+                implicitHeight: Math.min(
+                    Math.max(historyList.contentHeight, emptyHistoryLabel.implicitHeight) + 8,
+                    root.height * 0.5)
+                radius: Appearance.rounding.small
+                color: Appearance.colors.colLayer2
+
+                StyledListView {
+                    id: historyList
+                    anchors {
+                        fill: parent
+                        margins: 4
+                    }
+                    clip: true
+                    spacing: 2
+                    model: ScriptModel {
+                        values: ClaudeCode.sessions
+                    }
+                    delegate: SessionListItem {
+                        required property var modelData
+                        width: historyList.width
+                        session: modelData
+                        current: ClaudeCode.resumeSessionId === modelData.id
+                        onClicked: {
+                            ClaudeCode.loadSession(modelData.id);
+                            root.historyShown = false;
+                        }
+                    }
+                }
+
+                StyledText {
+                    id: emptyHistoryLabel
+                    anchors.centerIn: parent
+                    visible: ClaudeCode.sessions.length === 0
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    color: Appearance.colors.colSubtext
+                    text: ClaudeCode.sessionsLoading
+                        ? Translation.tr("Looking for past conversations…")
+                        : Translation.tr("No past conversations here yet")
+                }
+            }
+        }
 
         Item { // Messages
             Layout.fillWidth: true
@@ -112,6 +267,15 @@ Item {
             }
         }
 
+        Loader { // Permission request, right above the input where the answer goes
+            Layout.fillWidth: true
+            active: ClaudeCode.pendingPermission !== null
+            visible: active
+            sourceComponent: PermissionRequestCard {
+                request: ClaudeCode.pendingPermission
+            }
+        }
+
         Rectangle { // Input area
             id: inputWrapper
             Layout.fillWidth: true
@@ -131,6 +295,179 @@ Item {
                     margins: 5
                 }
                 spacing: 2
+
+                Repeater { // Messages waiting for the current turn to finish
+                    model: ScriptModel {
+                        values: ClaudeCode.queuedMessages
+                    }
+
+                    delegate: Rectangle {
+                        id: queuedItem
+                        required property var modelData
+                        required property int index
+                        Layout.fillWidth: true
+                        Layout.bottomMargin: 2
+                        implicitHeight: queuedRow.implicitHeight + 10
+                        radius: Appearance.rounding.verysmall
+                        color: Appearance.colors.colLayer1
+
+                        RowLayout {
+                            id: queuedRow
+                            anchors {
+                                left: parent.left
+                                right: parent.right
+                                verticalCenter: parent.verticalCenter
+                                leftMargin: 8
+                                rightMargin: 4
+                            }
+                            spacing: 6
+
+                            MaterialSymbol {
+                                iconSize: Appearance.font.pixelSize.normal
+                                color: Appearance.colors.colSubtext
+                                text: "schedule_send"
+                            }
+                            StyledText {
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                color: Appearance.colors.colSubtext
+                                text: queuedItem.modelData
+                            }
+                            RippleButton {
+                                implicitWidth: 22
+                                implicitHeight: 22
+                                buttonRadius: Appearance.rounding.full
+                                onClicked: ClaudeCode.unqueueMessage(queuedItem.index)
+
+                                contentItem: MaterialSymbol {
+                                    anchors.centerIn: parent
+                                    horizontalAlignment: Text.AlignHCenter
+                                    iconSize: Appearance.font.pixelSize.normal
+                                    color: Appearance.colors.colSubtext
+                                    text: "close"
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Revealer { // Slash commands
+                    vertical: true
+                    reveal: root.slashSuggestions.length > 0
+
+                    Rectangle {
+                        width: inputColumn.width
+                        implicitHeight: Math.min(slashList.contentHeight + 8, root.height * 0.35)
+                        radius: Appearance.rounding.small
+                        color: Appearance.colors.colLayer1
+
+                        StyledListView {
+                            id: slashList
+                            anchors {
+                                fill: parent
+                                margins: 4
+                            }
+                            clip: true
+                            spacing: 1
+                            model: ScriptModel {
+                                values: root.slashSuggestions
+                            }
+                            delegate: SlashCommandItem {
+                                required property var modelData
+                                width: slashList.width
+                                command: modelData
+                                onClicked: root.applySlashCommand(modelData)
+                            }
+                        }
+                    }
+                }
+
+                Revealer { // Working directory picker
+                    vertical: true
+                    reveal: root.directoryPickerShown
+
+                    ColumnLayout {
+                        width: inputColumn.width
+                        spacing: 4
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            MaterialTextField {
+                                id: directoryInput
+                                Layout.fillWidth: true
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                placeholderText: Translation.tr("Path to a directory…")
+                                onAccepted: ClaudeCode.setWorkingDirectory(directoryInput.text)
+                                Keys.onPressed: event => {
+                                    if (event.key === Qt.Key_Escape) {
+                                        root.directoryPickerShown = false;
+                                        event.accepted = true;
+                                    }
+                                }
+                            }
+
+                            RippleButton {
+                                implicitWidth: 32
+                                implicitHeight: 32
+                                buttonRadius: Appearance.rounding.small
+                                enabled: directoryInput.text.trim().length > 0 && !ClaudeCode.busy
+                                onClicked: ClaudeCode.setWorkingDirectory(directoryInput.text)
+
+                                contentItem: MaterialSymbol {
+                                    anchors.centerIn: parent
+                                    horizontalAlignment: Text.AlignHCenter
+                                    iconSize: Appearance.font.pixelSize.larger
+                                    color: parent.enabled ? Appearance.colors.colOnLayer2 : Appearance.colors.colOnLayer2Disabled
+                                    text: "subdirectory_arrow_left"
+                                }
+                            }
+                        }
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 4
+                            visible: ClaudeCode.directoryError.length > 0
+                            wrapMode: Text.Wrap
+                            font.pixelSize: Appearance.font.pixelSize.smallest
+                            color: Appearance.m3colors.m3error
+                            text: ClaudeCode.directoryError
+                        }
+
+                        Rectangle { // Somewhere Claude has already been used
+                            Layout.fillWidth: true
+                            radius: Appearance.rounding.small
+                            color: Appearance.colors.colLayer1
+                            implicitHeight: Math.min(directoryList.contentHeight + 8, root.height * 0.3)
+                            visible: ClaudeCode.knownDirectories.length > 0
+
+                            StyledListView {
+                                id: directoryList
+                                anchors {
+                                    fill: parent
+                                    margins: 4
+                                }
+                                clip: true
+                                spacing: 2
+                                model: ScriptModel {
+                                    values: ClaudeCode.knownDirectories
+                                }
+                                delegate: DirectoryListItem {
+                                    required property var modelData
+                                    width: directoryList.width
+                                    directory: modelData
+                                    current: ClaudeCode.workingDirectory === modelData.path
+                                    onClicked: {
+                                        ClaudeCode.setWorkingDirectory(modelData.path);
+                                        root.directoryPickerShown = false;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
 
                 Revealer { // Model picker
                     vertical: true
@@ -174,6 +511,10 @@ Item {
                         Layout.fillWidth: true
                         Layout.preferredHeight: Math.min(root.height * 2 / 5, messageInputField.height)
                         clip: true
+                        // Without this the flickable's content is only as wide as
+                        // the text itself, so an empty field is click-to-focus
+                        // over the placeholder alone.
+                        contentWidth: availableWidth
                         ScrollBar.vertical.policy: ScrollBar.AsNeeded
 
                         StyledTextArea {
@@ -183,12 +524,21 @@ Item {
                             padding: 8
                             background: null
                             color: activeFocus ? Appearance.m3colors.m3onSurface : Appearance.m3colors.m3onSurfaceVariant
-                            placeholderText: ClaudeCode.busy ? Translation.tr("Claude is working…") : Translation.tr("Ask Claude…")
+                            placeholderText: ClaudeCode.busy
+                                ? Translation.tr("Claude is working — type to queue")
+                                : Translation.tr("Ask Claude…  /  for commands")
 
                             Keys.onPressed: event => {
-                                if (event.key === Qt.Key_Enter || event.key === Qt.Key_Return) {
+                                if (event.key === Qt.Key_Tab && root.slashSuggestions.length > 0) {
+                                    root.applySlashCommand(root.slashSuggestions[0]);
+                                    event.accepted = true;
+                                } else if (event.key === Qt.Key_Enter || event.key === Qt.Key_Return) {
                                     if (event.modifiers & Qt.ShiftModifier) {
                                         messageInputField.insert(messageInputField.cursorPosition, "\n");
+                                    } else if (root.slashSuggestions.length === 1) {
+                                        // Exactly one match: complete it rather
+                                        // than sending a half-typed command.
+                                        root.applySlashCommand(root.slashSuggestions[0]);
                                     } else {
                                         root.send();
                                     }
@@ -207,15 +557,19 @@ Item {
                         implicitWidth: 40
                         implicitHeight: 40
                         buttonRadius: Appearance.rounding.small
-                        enabled: ClaudeCode.busy || (messageInputField.text.trim().length > 0 && ClaudeCode.available)
+                        readonly property bool hasText: messageInputField.text.trim().length > 0
+                        enabled: ClaudeCode.busy || (sendButton.hasText && ClaudeCode.available)
                         toggled: enabled
 
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: sendButton.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
                             onClicked: {
-                                if (ClaudeCode.busy) ClaudeCode.interrupt();
-                                else root.send();
+                                // Typing during a turn queues it; the stop
+                                // button is only what's left when there's
+                                // nothing waiting to be sent.
+                                if (sendButton.hasText) root.send();
+                                else if (ClaudeCode.busy) ClaudeCode.interrupt();
                             }
                         }
 
@@ -223,9 +577,11 @@ Item {
                             anchors.centerIn: parent
                             horizontalAlignment: Text.AlignHCenter
                             iconSize: 22
-                            fill: ClaudeCode.busy ? 1 : 0
+                            fill: (ClaudeCode.busy && !sendButton.hasText) ? 1 : 0
                             color: sendButton.enabled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer2Disabled
-                            text: ClaudeCode.busy ? "stop_circle" : "arrow_upward"
+                            text: (ClaudeCode.busy && sendButton.hasText) ? "schedule_send"
+                                : ClaudeCode.busy ? "stop_circle"
+                                : "arrow_upward"
                         }
                     }
                 }
@@ -266,12 +622,73 @@ Item {
                         }
                     }
 
-                    StyledText {
+                    RippleButton { // Working directory
+                        id: directoryButton
                         Layout.fillWidth: true
-                        elide: Text.ElideLeft
-                        font.pixelSize: Appearance.font.pixelSize.smaller
-                        color: Appearance.colors.colSubtext
-                        text: ClaudeCode.workingDirectory
+                        implicitHeight: 28
+                        buttonRadius: Appearance.rounding.full
+                        toggled: root.directoryPickerShown
+                        enabled: !ClaudeCode.busy
+                        onClicked: root.toggleDirectoryPicker()
+
+                        contentItem: RowLayout {
+                            anchors {
+                                fill: parent
+                                leftMargin: 8
+                                rightMargin: 8
+                            }
+                            spacing: 4
+
+                            MaterialSymbol {
+                                iconSize: Appearance.font.pixelSize.normal
+                                color: directoryButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colSubtext
+                                text: "folder"
+                            }
+                            StyledText {
+                                Layout.fillWidth: true
+                                elide: Text.ElideLeft
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                color: directoryButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colSubtext
+                                text: ClaudeCode.workingDirectory
+                            }
+                        }
+
+                        StyledToolTip {
+                            text: ClaudeCode.busy
+                                ? Translation.tr("Can't move while Claude is working")
+                                : Translation.tr("Working directory — click to change.\nMoving starts a new conversation.")
+                        }
+                    }
+
+                    RippleButton { // Ask before each tool, or let it run
+                        id: permissionButton
+                        implicitWidth: 28
+                        implicitHeight: 28
+                        buttonRadius: Appearance.rounding.full
+                        toggled: ClaudeCode.askPermission
+                        onClicked: ClaudeCode.setPermissionMode(ClaudeCode.askPermission ? "bypass" : "ask")
+
+                        contentItem: MaterialSymbol {
+                            anchors.centerIn: parent
+                            horizontalAlignment: Text.AlignHCenter
+                            iconSize: Appearance.font.pixelSize.large
+                            color: permissionButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.m3colors.m3error
+                            text: ClaudeCode.askPermission ? "encrypted" : "no_encryption"
+                        }
+
+                        StyledToolTip {
+                            text: ClaudeCode.askPermission
+                                ? Translation.tr("Asking before each tool")
+                                : Translation.tr("Running unattended — no confirmations")
+                        }
+                    }
+
+                    StyledText { // How long until the usage limit resets
+                        visible: ClaudeCode.rateLimitResetText.length > 0
+                            && ClaudeCode.rateLimit?.status !== "allowed"
+                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        color: Appearance.m3colors.m3error
+                        text: Translation.tr("limit resets in %1").arg(ClaudeCode.rateLimitResetText)
                     }
 
                     Item { // Context window usage
@@ -312,25 +729,6 @@ Item {
                         }
                     }
 
-                    RippleButton {
-                        implicitWidth: 28
-                        implicitHeight: 28
-                        buttonRadius: Appearance.rounding.full
-                        enabled: ClaudeCode.messageIDs.length > 0 && !ClaudeCode.busy
-                        onClicked: ClaudeCode.clearMessages()
-
-                        contentItem: MaterialSymbol {
-                            anchors.centerIn: parent
-                            horizontalAlignment: Text.AlignHCenter
-                            iconSize: Appearance.font.pixelSize.large
-                            color: parent.enabled ? Appearance.colors.colOnLayer2 : Appearance.colors.colOnLayer2Disabled
-                            text: "delete_sweep"
-                        }
-
-                        StyledToolTip {
-                            text: Translation.tr("New conversation (Ctrl+Shift+O)")
-                        }
-                    }
                 }
             }
         }
