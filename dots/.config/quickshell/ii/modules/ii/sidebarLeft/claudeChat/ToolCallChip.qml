@@ -17,10 +17,11 @@ Rectangle {
     readonly property string toolName: root.toolCall?.name ?? ""
 
     // Restored history keeps the chip but not the input, so nothing to open.
-    readonly property bool expandable: root.isEdit || root.isWrite || root.isTodo
+    readonly property bool expandable: root.isEdit || root.isWrite || root.isBash
     readonly property bool isEdit: root.toolName === "Edit" && (root.input?.old_string !== undefined)
     readonly property bool isWrite: root.toolName === "Write" && (root.input?.content !== undefined)
     readonly property bool isTodo: root.toolName === "TodoWrite" && Array.isArray(root.input?.todos)
+    readonly property bool isBash: root.toolName === "Bash" && (root.input?.command !== undefined)
 
     property bool expanded: false
 
@@ -114,6 +115,18 @@ Rectangle {
             visible: active
             sourceComponent: TodoListView {
                 todos: root.input?.todos ?? []
+            }
+        }
+
+        Loader { // What the command was and what it printed
+            Layout.fillWidth: true
+            active: root.expanded && root.isBash
+            visible: active
+            sourceComponent: CommandOutputView {
+                command: root.input?.command ?? ""
+                output: root.toolCall?.output ?? ""
+                errored: root.errored
+                running: root.running
             }
         }
 
