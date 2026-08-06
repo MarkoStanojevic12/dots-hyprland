@@ -327,17 +327,23 @@ Singleton {
                     // address: a calendar called "foo@gmail.com" is matched
                     // against Chrome's profiles automatically. Everything
                     // unlisted falls back to defaultAccount.
-                    // Left empty here on purpose: this file is committed, and
-                    // these are personal addresses. Set them in
-                    // ~/.config/illogical-impulse/config.json, e.g.
+                    // Prefer naming the Chrome profile directory, which
+                    // identifies nobody, over an account address:
                     //   "accountByCalendar": [
-                    //     { "calendar": "work", "account": "you@company.com" }
+                    //     { "calendar": "work", "profile": "Profile 1" }
                     //   ],
-                    //   "defaultAccount": "you@gmail.com"
+                    //   "defaultProfile": "Default"
+                    //
+                    // An { "account": "you@example.com" } entry also works and
+                    // is resolved against Chrome's own profile list, but then
+                    // the address sits in a config file. Set either in
+                    // ~/.config/illogical-impulse/config.json -- never here,
+                    // since this file is committed.
                     property list<var> accountByCalendar: []
                     // Used for calendars not matched above -- shared/group
                     // calendars, holidays, and anything else.
                     property string defaultAccount: ""
+                    property string defaultProfile: ""
                 }
 
                 // Reminders for upcoming events.
