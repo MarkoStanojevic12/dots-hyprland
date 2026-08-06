@@ -89,8 +89,19 @@ Scope { // Scope
             visible: GlobalStates.sidebarLeftOpen
             
             property bool extend: false
-            property real sidebarWidth: panelWindow.extend ? Appearance.sizes.sidebarWidthExtended : Appearance.sizes.sidebarWidth
+            property bool resizing: false
+            property real dragWidth: 0
+            readonly property real configuredWidth: panelWindow.extend ? Appearance.sizes.sidebarWidthExtended : Appearance.sizes.sidebarWidthLeft
+            // Follow the pointer while dragging, the saved value otherwise
+            property real sidebarWidth: panelWindow.resizing ? panelWindow.dragWidth : panelWindow.configuredWidth
             property var contentParent: sidebarLeftBackground
+
+            // Drag writes back to whichever width is currently on screen
+            function commitWidth(w) {
+                const rounded = Math.round(w);
+                if (panelWindow.extend) Config.options.sidebar.widthLeftExtended = rounded;
+                else Config.options.sidebar.widthLeft = rounded;
+            }
 
             function hide() {
                 GlobalStates.sidebarLeftOpen = false
@@ -98,7 +109,7 @@ Scope { // Scope
 
             exclusionMode: ExclusionMode.Normal
             exclusiveZone: root.pin ? sidebarWidth : 0
-            implicitWidth: Appearance.sizes.sidebarWidthExtended + Appearance.sizes.elevationMargin
+            implicitWidth: Appearance.sizes.sidebarLeftMaxWidth + Appearance.sizes.elevationMargin
             WlrLayershell.namespace: "quickshell:sidebarLeft"
             // Hyprland 0.49: OnDemand is Exclusive, Exclusive just breaks click-outside-to-close
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
@@ -110,8 +121,12 @@ Scope { // Scope
                 bottom: true
             }
 
+            // While dragging, claim the whole window so pointer motion past the
+            // panel edge still reaches the resize handle
             mask: Region {
-                item: sidebarLeftBackground
+                item: panelWindow.resizing ? null : sidebarLeftBackground
+                width: panelWindow.resizing ? panelWindow.width : 0
+                height: panelWindow.resizing ? panelWindow.height : 0
             }
 
             onVisibleChanged: {
@@ -146,7 +161,9 @@ Scope { // Scope
                 border.color: Appearance.colors.colLayer0Border
                 radius: Appearance.rounding.screenRounding - Appearance.sizes.hyprlandGapsOut + 1
 
+                // Animating during a drag would lag behind the pointer
                 Behavior on width {
+                    enabled: !panelWindow.resizing
                     animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
                 }
 
@@ -163,6 +180,74 @@ Scope { // Scope
                             root.togglePin();
                         }
                         event.accepted = true;
+                    }
+                }
+            }
+
+            // Drag-to-resize grip. Sibling of the background rect on purpose:
+            // anything parented to it gets wiped by `contentParent.children = [...]`
+            MouseArea {
+                id: resizeHandle
+                anchors.right: sidebarLeftBackground.right
+                anchors.top: sidebarLeftBackground.top
+                anchors.bottom: sidebarLeftBackground.bottom
+                width: Appearance.sizes.sidebarResizeHandleWidth
+                z: 100
+
+                hoverEnabled: true
+                preventStealing: true
+                cursorShape: Qt.SizeHorCursor
+                acceptedButtons: Qt.LeftButton
+
+                property real pressWindowX: 0
+                property real startWidth: 0
+
+                function windowX(mouse) {
+                    return mapToItem(null, mouse.x, mouse.y).x;
+                }
+
+                onPressed: mouse => {
+                    startWidth = panelWindow.sidebarWidth;
+                    pressWindowX = windowX(mouse);
+                    panelWindow.dragWidth = startWidth;
+                    panelWindow.resizing = true;
+                }
+
+                onPositionChanged: mouse => {
+                    if (!panelWindow.resizing) return;
+                    const target = startWidth + (windowX(mouse) - pressWindowX);
+                    panelWindow.dragWidth = Math.max(Appearance.sizes.sidebarLeftMinWidth, Math.min(Appearance.sizes.sidebarLeftMaxWidth, target));
+                }
+
+                onReleased: {
+                    if (!panelWindow.resizing) return;
+                    panelWindow.commitWidth(panelWindow.dragWidth);
+                    panelWindow.resizing = false;
+                }
+
+                onCanceled: {
+                    if (!panelWindow.resizing) return;
+                    panelWindow.commitWidth(panelWindow.dragWidth);
+                    panelWindow.resizing = false;
+                }
+
+                // Double click resets to the default width
+                onDoubleClicked: {
+                    panelWindow.resizing = false;
+                    panelWindow.commitWidth(panelWindow.extend ? 750 : 460);
+                }
+
+                // Subtle grip, only visible when it matters
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 3
+                    height: 42
+                    radius: width / 2
+                    color: Appearance.colors.colOnLayer0
+                    opacity: (resizeHandle.containsMouse || panelWindow.resizing) ? 0.45 : 0
+
+                    Behavior on opacity {
+                        animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
                     }
                 }
             }

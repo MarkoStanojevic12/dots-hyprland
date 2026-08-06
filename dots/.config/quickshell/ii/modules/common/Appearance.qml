@@ -403,8 +403,14 @@ Singleton {
         property real osdWidth: 180
         property real searchWidthCollapsed: 210
         property real searchWidth: 360
-        property real sidebarWidth: 460
-        property real sidebarWidthExtended: 750
+        property real sidebarWidth: Config.options.sidebar.widthRight
+        property real sidebarWidthLeft: Config.options.sidebar.widthLeft
+        // Never narrower than the normal left width, or "extend" would shrink it
+        property real sidebarWidthExtended: Math.max(Config.options.sidebar.widthLeftExtended, root.sizes.sidebarWidthLeft)
+        // Drag-to-resize bounds for the left sidebar
+        property real sidebarLeftMinWidth: 320
+        property real sidebarLeftMaxWidth: 1600
+        property real sidebarResizeHandleWidth: 8
         property real baseVerticalBarWidth: 46
         property real verticalBarWidth: Config.options.bar.cornerStyle === 1 ? 
             (baseVerticalBarWidth + root.sizes.hyprlandGapsOut * 2) : baseVerticalBarWidth
