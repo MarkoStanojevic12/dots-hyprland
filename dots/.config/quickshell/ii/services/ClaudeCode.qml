@@ -863,11 +863,35 @@ Singleton {
         }];
     }
 
-    function resolveToolCall(id, isError) {
+    // Results can run to megabytes for something like a whole-file read; the
+    // chip only ever shows the head of it.
+    readonly property int maxOutputChars: 8000
+
+    // Most tools answer with a plain string, but the block form is allowed
+    // too — anything that isn't text (an image, say) has nothing to show here.
+    function toolResultText(content) {
+        if (typeof content === "string") return content;
+        if (Array.isArray(content)) {
+            return content
+                .filter(block => block?.type === "text")
+                .map(block => block.text ?? "")
+                .join("\n");
+        }
+        return "";
+    }
+
+    function resolveToolCall(id, isError, output) {
         const message = root.currentAssistant();
         if (!message) return;
-        message.toolCalls = message.toolCalls.map(call =>
-            call.id === id ? Object.assign({}, call, { status: isError ? "error" : "done" }) : call);
+        const text = (output ?? "");
+        message.toolCalls = message.toolCalls.map(call => call.id === id
+            ? Object.assign({}, call, {
+                status: isError ? "error" : "done",
+                output: text.length > root.maxOutputChars
+                    ? text.substring(0, root.maxOutputChars) + "\n…"
+                    : text
+            })
+            : call);
     }
 
     // ------------------------------------------------------------------
@@ -995,7 +1019,8 @@ Singleton {
     function handleToolResults(message) {
         for (const block of (message?.content ?? [])) {
             if (block.type === "tool_result") {
-                root.resolveToolCall(block.tool_use_id, block.is_error ?? false);
+                root.resolveToolCall(block.tool_use_id, block.is_error ?? false,
+                    root.toolResultText(block.content));
             }
         }
     }
