@@ -509,6 +509,11 @@ Singleton {
 
             property JsonObject sidebar: JsonObject {
                 property bool keepRightSidebarLoaded: true
+                // Panel widths in px. Left and right are independent.
+                property int widthLeft: 460
+                // Width of the left sidebar when its "extend" toggle is on.
+                property int widthLeftExtended: 750
+                property int widthRight: 460
                 property JsonObject translator: JsonObject {
                     property bool enable: false
                     property int delay: 300 // Delay before sending request. Reduces (potential) rate limits and lag.
