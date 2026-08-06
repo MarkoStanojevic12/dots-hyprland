@@ -97,6 +97,74 @@ Singleton {
     // { requestId, toolName, displayName, description, input, suggestions, toolUseId }
     property var pendingPermission: null
 
+    // AskUserQuestion arrives down the same channel, but it isn't a permission
+    // question — it's Claude asking something, and the answer travels back as
+    // `answers` on the tool input. { requestId, questions, input }
+    property var pendingQuestion: null
+
+    // The card disappears once answered, so the choice is written back onto
+    // the tool call that asked — otherwise the transcript never records what
+    // was picked.
+    // `picks` keeps the chosen labels as a list per question. The CLI only
+    // takes them comma-joined, but splitting that back apart would mangle any
+    // label containing a comma, so the list is carried through for display.
+    function recordQuestionAnswers(pending, answers, picks) {
+        const message = root.currentAssistant();
+        if (!message || !pending) return;
+        const summary = (pending.questions ?? []).map(question => {
+            const value = answers?.[question.question] ?? "";
+            if (value.length === 0) return "";
+            const header = (question.header ?? "").trim();
+            return header.length > 0 ? `${header}: ${value}` : value;
+        }).filter(part => part.length > 0).join(" · ");
+
+        message.toolCalls = message.toolCalls.map(call => call.id === pending.toolUseId
+            ? Object.assign({}, call, {
+                answers: answers ?? ({}),
+                picks: picks ?? ({}),
+                // Survives into saved history, where the full input doesn't.
+                detail: summary.length > 0 ? summary : Translation.tr("no answer")
+            })
+            : call);
+    }
+
+    function answerQuestion(answers, picks) {
+        const pending = root.pendingQuestion;
+        if (!pending) return;
+        root.recordQuestionAnswers(pending, answers, picks);
+        root.pendingQuestion = null;
+        claudeProcess.write(JSON.stringify({
+            type: "control_response",
+            response: {
+                subtype: "success",
+                request_id: pending.requestId,
+                response: {
+                    behavior: "allow",
+                    // Keyed by the question text; multi-select answers are
+                    // joined with commas.
+                    updatedInput: Object.assign({}, pending.input, { answers: answers })
+                }
+            }
+        }) + "\n");
+    }
+
+    // Allowing the tool without answers is how "I'd rather not say" is
+    // expressed: Claude is told nothing was chosen and carries on.
+    function dismissQuestion() {
+        const pending = root.pendingQuestion;
+        if (!pending) return;
+        root.recordQuestionAnswers(pending, null, null);
+        root.pendingQuestion = null;
+        claudeProcess.write(JSON.stringify({
+            type: "control_response",
+            response: {
+                subtype: "success",
+                request_id: pending.requestId,
+                response: { behavior: "allow", updatedInput: pending.input }
+            }
+        }) + "\n");
+    }
+
     function setPermissionMode(mode) {
         if (root.options) root.options.permissionMode = mode;
         if (claudeProcess.running) {
@@ -112,6 +180,15 @@ Singleton {
 
     function handlePermissionRequest(event) {
         const request = event.request;
+        if (request.tool_name === "AskUserQuestion") {
+            root.pendingQuestion = {
+                requestId: event.request_id,
+                questions: request.input?.questions ?? [],
+                input: request.input ?? ({}),
+                toolUseId: request.tool_use_id ?? ""
+            };
+            return;
+        }
         root.pendingPermission = {
             requestId: event.request_id,
             toolName: request.tool_name ?? "",
@@ -634,6 +711,7 @@ Singleton {
         root.busy = false;
         root.contextTokens = 0;
         root.pendingPermission = null;
+        root.pendingQuestion = null;
         root.queuedMessages = [];
         root.resumeSessionId = "";
         root.forgetSession();
@@ -659,6 +737,7 @@ Singleton {
         // Answering first keeps the CLI from blocking on a prompt nobody
         // will ever click once the process is gone.
         if (root.pendingPermission) root.answerPermission("deny", null);
+        if (root.pendingQuestion) root.dismissQuestion();
         claudeProcess.running = false;
         root.busy = false;
         root.queuedMessages = [];
@@ -739,11 +818,22 @@ Singleton {
         "WebSearch": "travel_explore",
         "Task": "account_tree",
         "TodoWrite": "checklist",
+        "AskUserQuestion": "quiz",
         "Skill": "extension"
     })
 
+    function truncate(text) {
+        const collapsed = (text ?? "").replace(/\s+/g, " ").trim();
+        return collapsed.length > 120 ? collapsed.substring(0, 120) + "…" : collapsed;
+    }
+
     function toolDetail(name, input) {
         if (!input) return "";
+        if (name === "AskUserQuestion") {
+            // Until it's answered, the question itself is the useful summary.
+            const first = (input.questions ?? [])[0];
+            return first ? root.truncate(first.question ?? "") : "";
+        }
         const key = root.toolDetailKeys[name];
         let value = key ? input[key] : undefined;
         if (value === undefined) {
@@ -756,8 +846,7 @@ Singleton {
             }
         }
         if (typeof value !== "string") return "";
-        const collapsed = value.replace(/\s+/g, " ").trim();
-        return collapsed.length > 120 ? collapsed.substring(0, 120) + "…" : collapsed;
+        return root.truncate(value);
     }
 
     function addToolCall(id, name, input) {
@@ -932,6 +1021,7 @@ Singleton {
         root.streamedText = "";
         root.busy = false;
         root.pendingPermission = null;
+        root.pendingQuestion = null;
         root.rememberSession();
 
         if (root.queuedMessages.length > 0) {

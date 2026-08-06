@@ -55,6 +55,14 @@ Item {
         }
     }
 
+    // Clearing leaves the composer empty and ready, so drop focus straight back
+    // into it — otherwise the click leaves focus on the button.
+    function startNewConversation() {
+        ClaudeCode.clearMessages();
+        root.historyShown = false;
+        messageInputField.forceActiveFocus();
+    }
+
     onFocusChanged: focus => {
         if (focus) root.inputField.forceActiveFocus();
     }
@@ -62,8 +70,7 @@ Item {
     Keys.onPressed: event => {
         messageInputField.forceActiveFocus();
         if ((event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier) && event.key === Qt.Key_O) {
-            ClaudeCode.clearMessages();
-            root.historyShown = false;
+            root.startNewConversation();
             event.accepted = true;
         }
     }
@@ -142,10 +149,7 @@ Item {
                 implicitHeight: 32
                 buttonRadius: Appearance.rounding.small
                 enabled: ClaudeCode.messageIDs.length > 0 && !ClaudeCode.busy
-                onClicked: {
-                    ClaudeCode.clearMessages();
-                    root.historyShown = false;
-                }
+                onClicked: root.startNewConversation()
 
                 contentItem: MaterialSymbol {
                     anchors.centerIn: parent
@@ -264,6 +268,15 @@ Item {
 
             ScrollToBottomButton {
                 target: messageListView
+            }
+        }
+
+        Loader { // Claude asking something, answered by clicking
+            Layout.fillWidth: true
+            active: ClaudeCode.pendingQuestion !== null
+            visible: active
+            sourceComponent: QuestionCard {
+                request: ClaudeCode.pendingQuestion
             }
         }
 
