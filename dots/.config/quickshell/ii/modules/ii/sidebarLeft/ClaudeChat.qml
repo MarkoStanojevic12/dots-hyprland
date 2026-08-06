@@ -23,6 +23,11 @@ Item {
 
     property bool directoryPickerShown: false
 
+    // Projects, project knowledge and claude.ai chat history have no public API
+    // and are not reachable from the CLI this tab drives, so the way to them is
+    // simply to open the web app.
+    readonly property string claudeWebUrl: "https://claude.ai/cowork/projects"
+
     // Slash commands are offered only while the whole message is still just
     // the command being typed, so a "/" mid-sentence doesn't trigger them.
     readonly property var slashSuggestions: {
@@ -161,6 +166,26 @@ Item {
 
                 StyledToolTip {
                     text: Translation.tr("New conversation (Ctrl+Shift+O)")
+                }
+            }
+
+            RippleButton { // claude.ai, for what the CLI has no access to
+                implicitWidth: 32
+                implicitHeight: 32
+                buttonRadius: Appearance.rounding.small
+                onClicked: Quickshell.execDetached(["xdg-open", root.claudeWebUrl])
+
+                contentItem: CustomIcon {
+                    anchors.centerIn: parent
+                    width: 18
+                    height: 18
+                    source: "claude-symbolic"
+                    colorize: true
+                    color: Appearance.colors.colOnLayer1
+                }
+
+                StyledToolTip {
+                    text: Translation.tr("Open claude.ai")
                 }
             }
         }
@@ -747,3 +772,4 @@ Item {
         }
     }
 }
+

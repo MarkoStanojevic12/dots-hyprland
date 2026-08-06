@@ -583,6 +583,13 @@ Singleton {
                 }
                 property JsonObject claude: JsonObject {
                     property bool enable: true
+                    // Sound when Claude needs an answer here (a permission
+                    // prompt or a question). The *finished* sound is not set
+                    // here: the Stop hook in ~/.claude/settings.json fires for
+                    // this headless CLI too, so adding one would double up.
+                    // Empty soundCommand disables it.
+                    property string inputNeededSound: "/usr/share/sounds/freedesktop/stereo/message.oga"
+                    property string soundCommand: "paplay"
                     // Empty = autodetect: `claude` on PATH, else the copy bundled
                     // with the VS Code extension.
                     property string cliPath: ""
