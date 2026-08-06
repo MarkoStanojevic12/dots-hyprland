@@ -318,6 +318,43 @@ Singleton {
                     property int maxDots: 3
                     // Days the week view shows, today counting as the first.
                     property int daysShown: 7
+
+                    // Which Google account owns a calendar, so a meeting link
+                    // opens in the matching Chrome profile instead of whichever
+                    // profile happened to be used last.
+                    //
+                    // Only needed where the calendar name isn't itself the
+                    // address: a calendar called "foo@gmail.com" is matched
+                    // against Chrome's profiles automatically. Everything
+                    // unlisted falls back to defaultAccount.
+                    // Left empty here on purpose: this file is committed, and
+                    // these are personal addresses. Set them in
+                    // ~/.config/illogical-impulse/config.json, e.g.
+                    //   "accountByCalendar": [
+                    //     { "calendar": "work", "account": "you@company.com" }
+                    //   ],
+                    //   "defaultAccount": "you@gmail.com"
+                    property list<var> accountByCalendar: []
+                    // Used for calendars not matched above -- shared/group
+                    // calendars, holidays, and anything else.
+                    property string defaultAccount: ""
+                }
+
+                // Reminders for upcoming events.
+                property JsonObject alerts: JsonObject {
+                    property bool enable: true
+                    // Minutes before an event starts to play the sound.
+                    property int soundLeadMinutes: 5
+                    // Minutes before an event starts to show the popup.
+                    property int popupLeadMinutes: 1
+                    property string soundFile: "/usr/share/sounds/freedesktop/stereo/bell.oga"
+                    property string soundCommand: "paplay"
+                    // All-day events "start" at midnight, so a lead-time
+                    // reminder for one fires late the previous night.
+                    property bool alertAllDay: false
+                    // Drop a popup this long after the event began, so a missed
+                    // reminder doesn't sit on screen all day.
+                    property int dismissAfterMinutes: 15
                 }
             }
 
