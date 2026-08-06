@@ -74,9 +74,22 @@ Item {
                 model: ScriptModel {
                     values: root.messageData?.toolCalls ?? []
                 }
-                delegate: ToolCallChip {
-                    required property var modelData
-                    toolCall: modelData
+                delegate: DelegateChooser {
+                    role: "name"
+
+                    DelegateChoice { // A decision the user made, not a tool run
+                        roleValue: "AskUserQuestion"
+                        AnsweredQuestionCard {
+                            required property var modelData
+                            toolCall: modelData
+                        }
+                    }
+                    DelegateChoice {
+                        ToolCallChip {
+                            required property var modelData
+                            toolCall: modelData
+                        }
+                    }
                 }
             }
         }
