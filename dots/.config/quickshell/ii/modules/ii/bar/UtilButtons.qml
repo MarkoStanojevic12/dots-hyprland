@@ -1,4 +1,5 @@
 import qs
+import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
 import QtQuick
@@ -142,6 +143,7 @@ Item {
             active: Config.options.bar.utilButtons.showPerformanceProfileToggle
             visible: Config.options.bar.utilButtons.showPerformanceProfileToggle
             sourceComponent: CircleUtilButton {
+                id: performanceProfileButton
                 Layout.alignment: Qt.AlignVCenter
                 onClicked: event => {
                     if (PowerProfiles.hasPerformanceProfile) {
@@ -167,6 +169,17 @@ Item {
                     }
                     iconSize: Appearance.font.pixelSize.large
                     color: Appearance.colors.colOnLayer2
+
+                    PopupToolTip {
+                        extraVisibleCondition: performanceProfileButton.hovered
+                        anchorEdges: (!Config.options.bar.bottom && !Config.options.bar.vertical) ? Edges.Bottom : Edges.Top
+                        text: switch(PowerProfiles.profile) {
+                            case PowerProfile.PowerSaver: return "Power saver · click to cycle"
+                            case PowerProfile.Balanced: return "Balanced · click to cycle"
+                            case PowerProfile.Performance: return "Performance · click to cycle"
+                            default: return "Power profile"
+                        }
+                    }
                 }
             }
         }
