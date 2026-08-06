@@ -3,6 +3,7 @@ pragma ComponentBehavior: Bound
 
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import QtQuick
 import Quickshell
 import Quickshell.Io
@@ -369,10 +370,92 @@ Singleton {
         return false;
     }
 
+    // ------------------------------------------------- browser profile routing
+
+    /**
+     * Opening a work meeting in the Chrome profile signed into a personal
+     * account lands you on an account-chooser page, or worse, silently joins as
+     * the wrong identity. Chrome keeps a profile -> account map in its
+     * "Local State" file, so the event's calendar can pick the profile.
+     */
+    property var chromeProfiles: ({})   // lowercased email -> profile directory
+    property string browserCommand: ""
+
+    readonly property string chromeStatePath: FileUtils.trimFileProtocol(`${Directories.config}/google-chrome/Local State`)
+
+    FileView {
+        id: chromeState
+        path: root.chromeStatePath
+        watchChanges: true
+        onFileChanged: reload()
+        onLoaded: {
+            try {
+                const cache = JSON.parse(chromeState.text())?.profile?.info_cache ?? {};
+                const map = ({});
+                for (const dir in cache) {
+                    const email = String(cache[dir]?.user_name ?? "").trim().toLowerCase();
+                    if (email.length > 0)
+                        map[email] = dir;
+                }
+                root.chromeProfiles = map;
+            } catch (e) {
+                console.error("[CalendarEvents] Could not parse Chrome Local State:", e);
+            }
+        }
+        onLoadFailed: error => {
+            root.chromeProfiles = ({});
+        }
+    }
+
+    Process {
+        id: browserProbe
+        running: Config.ready
+        command: ["bash", "-c", "command -v google-chrome-stable || command -v google-chrome || command -v chromium || true"]
+        stdout: StdioCollector {
+            id: browserProbeOut
+        }
+        onExited: (exitCode, exitStatus) => {
+            root.browserCommand = (browserProbeOut.text ?? "").trim().split("\n")[0] ?? "";
+        }
+    }
+
+    // Which Google account owns a given calendar.
+    function accountForCalendar(name) {
+        const cal = String(name ?? "").trim();
+        const overrides = root.opts?.accountByCalendar ?? [];
+        for (let i = 0; i < overrides.length; i++) {
+            if (String(overrides[i]?.calendar ?? "").toLowerCase() === cal.toLowerCase())
+                return String(overrides[i]?.account ?? "").toLowerCase();
+        }
+        // A calendar named after an address that Chrome knows is self-describing
+        // -- that is the common case for a primary calendar.
+        if (root.chromeProfiles[cal.toLowerCase()])
+            return cal.toLowerCase();
+        return String(root.opts?.defaultAccount ?? "").trim().toLowerCase();
+    }
+
+    function profileDirForCalendar(name) {
+        const account = root.accountForCalendar(name);
+        return account.length > 0 ? (root.chromeProfiles[account] ?? "") : "";
+    }
+
     function openUrl(url) {
         if (!url || String(url).length === 0)
             return;
         Quickshell.execDetached(["xdg-open", String(url)]);
+    }
+
+    // Open an event's link in the browser profile matching its calendar.
+    function openEventLink(e) {
+        const url = String(e?.meetingUrl ?? "");
+        if (url.length === 0)
+            return;
+        const profile = root.profileDirForCalendar(e?.calendar);
+        if (profile.length > 0 && root.browserCommand.length > 0) {
+            Quickshell.execDetached([root.browserCommand, `--profile-directory=${profile}`, url]);
+            return;
+        }
+        root.openUrl(url);
     }
 
     // --------------------------------------------------------------- parsing
@@ -616,3 +699,4 @@ Singleton {
         }
     }
 }
+

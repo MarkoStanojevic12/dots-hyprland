@@ -29,7 +29,7 @@ RippleButton {
 
     downAction: () => {
         if (root.hasLink)
-            CalendarEvents.openUrl(root.link);
+            CalendarEvents.openEventLink(root.event);
     }
 
     contentItem: RowLayout {
