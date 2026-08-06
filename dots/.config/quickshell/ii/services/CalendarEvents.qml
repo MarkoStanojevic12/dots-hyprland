@@ -434,9 +434,33 @@ Singleton {
         return String(root.opts?.defaultAccount ?? "").trim().toLowerCase();
     }
 
+    /**
+     * A mapping entry may name the Chrome profile directory outright
+     * ({"calendar": "work", "profile": "Profile 1"}) instead of an account
+     * address. Preferred: it keeps work and personal addresses out of config
+     * files entirely, and a profile directory name identifies nobody.
+     */
+    function profileOverrideFor(name) {
+        const cal = String(name ?? "").trim().toLowerCase();
+        const overrides = root.opts?.accountByCalendar ?? [];
+        for (let i = 0; i < overrides.length; i++) {
+            if (String(overrides[i]?.calendar ?? "").trim().toLowerCase() !== cal)
+                continue;
+            const profile = String(overrides[i]?.profile ?? "").trim();
+            if (profile.length > 0)
+                return profile;
+        }
+        return "";
+    }
+
     function profileDirForCalendar(name) {
+        const direct = root.profileOverrideFor(name);
+        if (direct.length > 0)
+            return direct;
         const account = root.accountForCalendar(name);
-        return account.length > 0 ? (root.chromeProfiles[account] ?? "") : "";
+        if (account.length > 0 && root.chromeProfiles[account])
+            return root.chromeProfiles[account];
+        return String(root.opts?.defaultProfile ?? "").trim();
     }
 
     function openUrl(url) {
