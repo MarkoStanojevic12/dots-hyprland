@@ -178,7 +178,18 @@ Singleton {
         }
     }
 
+    // Both branches below park the turn until you answer, so the sound belongs
+    // here rather than being duplicated into each.
+    function playInputNeededSound() {
+        const command = Config.options?.sidebar?.claude?.soundCommand ?? "";
+        const file = Config.options?.sidebar?.claude?.inputNeededSound ?? "";
+        if (command.length === 0 || file.length === 0)
+            return;
+        Quickshell.execDetached([command, file]);
+    }
+
     function handlePermissionRequest(event) {
+        root.playInputNeededSound();
         const request = event.request;
         if (request.tool_name === "AskUserQuestion") {
             root.pendingQuestion = {
