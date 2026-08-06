@@ -306,6 +306,19 @@ Singleton {
 
             property JsonObject calendar: JsonObject {
                 property string locale: "en-GB"
+
+                // Google Calendar events, via vdirsyncer + khal.
+                // Setup: ~/.config/vdirsyncer/README-google.md
+                property JsonObject events: JsonObject {
+                    property bool enable: true
+                    // Minutes between khal re-reads of the local vdirs. This is
+                    // not the Google sync interval -- that's vdirsyncer.timer.
+                    property int refreshInterval: 5
+                    // Max event dots drawn under a day number in the grid.
+                    property int maxDots: 3
+                    // Days the week view shows, today counting as the first.
+                    property int daysShown: 7
+                }
             }
 
             property JsonObject cheatsheet: JsonObject {
@@ -514,6 +527,10 @@ Singleton {
                 // Width of the left sidebar when its "extend" toggle is on.
                 property int widthLeftExtended: 750
                 property int widthRight: 460
+                // Height of the expanded Week/Month/To Do/Timer panel at the
+                // bottom of the right sidebar. The week view is the reason this
+                // is generous -- seven days of events need the room.
+                property int bottomGroupHeight: 560
                 property JsonObject translator: JsonObject {
                     property bool enable: false
                     property int delay: 300 // Delay before sending request. Reduces (potential) rate limits and lag.

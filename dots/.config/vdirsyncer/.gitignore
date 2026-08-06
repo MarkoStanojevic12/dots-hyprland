@@ -1,0 +1,7 @@
+# Real config holds the OAuth client secret and the secret iCal URL.
+# Commit config.template instead.
+config
+config.bak.*
+
+# Timestamped backups written by the setup scripts
+*.bak.*

@@ -8,6 +8,13 @@ const weekDays = [ // MONDAY IS THE FIRST DAY OF THE WEEK :HESRIGHTYOUKNOW:
     { day: 'Su', today: 0 },
 ]
 
+// Local-time "YYYY-MM-DD". Deliberately not toISOString(), which shifts to UTC
+// and can land on the wrong day either side of midnight.
+function isoDateKey(d) {
+    const pad = (n) => (n < 10 ? `0${n}` : `${n}`);
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
 function checkLeapYear(year) {
     return (
         year % 400 == 0 ||
@@ -85,8 +92,13 @@ function getCalendarLayout(dateObject, highlight) {
     var calendar = [...Array(6)].map(() => Array(7));
     var i = 0, j = 0;
     while (i < 6 && j < 7) {
+        // Actual calendar date of this cell, so events can be looked up by key.
+        // monthDiff is -1/0/1; Date() normalises the year rollover for us.
+        var cellDate = new Date(year, (month - 1) + monthDiff, toFill);
         calendar[i][j] = {
             "day": toFill,
+            "date": cellDate,
+            "dateKey": isoDateKey(cellDate),
             "today": ((toFill == day && monthDiff == 0 && highlight) ? 1 : (
                 monthDiff == 0 ? 0 : -1
             ))

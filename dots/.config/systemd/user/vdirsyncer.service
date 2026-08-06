@@ -1,0 +1,11 @@
+[Unit]
+Description=Sync Google Calendar into local vdirs
+Documentation=man:vdirsyncer(1)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# metasync keeps displayname/colour fresh; sync pulls the events themselves.
+ExecStart=/usr/bin/vdirsyncer -v WARNING metasync
+ExecStart=/usr/bin/vdirsyncer -v WARNING sync

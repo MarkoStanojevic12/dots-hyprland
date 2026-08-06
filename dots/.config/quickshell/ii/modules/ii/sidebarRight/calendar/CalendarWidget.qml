@@ -6,6 +6,7 @@ import QtQuick
 import QtQuick.Layouts
 
 Item {
+    id: root
     // Layout.topMargin: 10
     anchors.topMargin: 10
     property int monthShift: 0
@@ -13,6 +14,17 @@ Item {
     property var calendarLayout: CalendarLayout.getCalendarLayout(viewingDate, monthShift === 0)
     width: calendarColumn.width
     implicitHeight: calendarColumn.height + 10 * 2
+
+    // Emitted when a day is clicked, so the sidebar can flip to the week view.
+    // Wired up in BottomWidgetGroup.
+    signal requestWeek()
+
+    // Keep the service's fetch window aligned with what's on screen.
+    onViewingDateChanged: CalendarEvents.viewMonth = viewingDate
+    Component.onCompleted: {
+        CalendarEvents.viewMonth = viewingDate;
+        CalendarEvents.refresh();
+    }
 
     Keys.onPressed: (event) => {
         if ((event.key === Qt.Key_PageDown || event.key === Qt.Key_PageUp)
@@ -112,8 +124,22 @@ Item {
                 Repeater {
                     model: Array(7).fill(modelData)
                     delegate: CalendarDayButton {
-                        day: calendarLayout[modelData][index].day
-                        isToday: calendarLayout[modelData][index].today
+                        id: dayButton
+                        readonly property var cell: root.calendarLayout[modelData][index]
+
+                        day: cell.day
+                        isToday: cell.today
+                        dotColors: {
+                            // Read eventsByDate so this binding re-evaluates when
+                            // the service reloads; dotColorsOn() alone wouldn't.
+                            const events = CalendarEvents.eventsByDate;
+                            return events ? CalendarEvents.dotColorsOn(cell.date) : [];
+                        }
+                        selected: CalendarEvents.dateKey(CalendarEvents.selectedDate) === cell.dateKey
+                        clickAction: () => {
+                            CalendarEvents.goToDay(cell.date);
+                            root.requestWeek();
+                        }
                     }
                 }
             }
