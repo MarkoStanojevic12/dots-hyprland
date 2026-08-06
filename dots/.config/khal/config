@@ -1,0 +1,27 @@
+[calendars]
+
+# Auto-discover every calendar vdirsyncer pulled down from Google.
+[[google]]
+path = ~/.local/share/vdirsyncer/calendars/*
+type = discover
+# Use the colour vdirsyncer wrote into each collection's `color` file.
+color = auto
+
+[[work]]
+path = ~/.local/share/vdirsyncer/calendars-work-ical/work
+type = calendar
+color = '#4DB6AC'
+
+[locale]
+# ISO everywhere. The Quickshell sidebar parses khal's JSON output, and these
+# formats are what it expects — changing them will break event parsing.
+dateformat = %Y-%m-%d
+longdateformat = %Y-%m-%d
+datetimeformat = %Y-%m-%d %H:%M
+longdatetimeformat = %Y-%m-%d %H:%M
+timeformat = %H:%M
+# 0 = Monday, matching the sidebar's Monday-first grid.
+firstweekday = 0
+
+[default]
+highlight_event_days = True

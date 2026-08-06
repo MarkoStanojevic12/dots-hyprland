@@ -13,14 +13,20 @@ Rectangle {
     radius: Appearance.rounding.normal
     color: Appearance.colors.colLayer1
     clip: true
-    implicitHeight: collapsed ? collapsedBottomWidgetGroupRow.implicitHeight : 350
+    implicitHeight: collapsed ? collapsedBottomWidgetGroupRow.implicitHeight : (Config.options.sidebar.bottomGroupHeight ?? 560)
     property int selectedTab: Persistent.states.sidebar.bottomGroup.tab
     property int previousIndex: -1
     property bool collapsed: Persistent.states.sidebar.bottomGroup.collapsed
     property var tabs: [
         {
+            "type": "week",
+            "name": Translation.tr("Week"),
+            "icon": "calendar_view_week",
+            "widget": "calendar/WeekWidget.qml"
+        },
+        {
             "type": "calendar",
-            "name": Translation.tr("Calendar"),
+            "name": Translation.tr("Month"),
             "icon": "calendar_month",
             "widget": "calendar/CalendarWidget.qml"
         },
@@ -201,6 +207,19 @@ Rectangle {
 
                 Component.onCompleted: {
                     tabStack.source = root.tabs[root.selectedTab].widget;
+                }
+
+                // The month grid asks to jump to the week view when a day is clicked.
+                Connections {
+                    target: tabStack.item
+                    ignoreUnknownSignals: true
+                    function onRequestWeek() {
+                        const weekIndex = root.tabs.findIndex(tab => tab.type === "week");
+                        if (weekIndex < 0)
+                            return;
+                        root.selectedTab = weekIndex;
+                        Persistent.states.sidebar.bottomGroup.tab = weekIndex;
+                    }
                 }
 
                 Connections {
