@@ -50,14 +50,25 @@ Item {
         spacing: sidebarPadding
 
         Toolbar {
-            visible: tabButtonList.length > 0
             Layout.alignment: Qt.AlignHCenter
             enableShadow: false
             ToolbarTabBar {
                 id: tabBar
+                visible: root.tabButtonList.length > 0
                 Layout.alignment: Qt.AlignHCenter
                 tabButtonList: root.tabButtonList
                 currentIndex: swipeView.currentIndex
+            }
+            IconToolbarButton {
+                // Meaningless once detached: a floating window has no click-outside
+                visible: !root.scopeRoot.detach
+                Layout.alignment: Qt.AlignVCenter
+                toggled: root.scopeRoot.lock
+                onClicked: root.scopeRoot.toggleLock()
+                text: root.scopeRoot.lock ? "lock" : "lock_open"
+                StyledToolTip {
+                    text: Translation.tr("Locked: close only with Esc or the toggle shortcut\nUnlocked: also closes when you click away (Ctrl+L)")
+                }
             }
         }
 

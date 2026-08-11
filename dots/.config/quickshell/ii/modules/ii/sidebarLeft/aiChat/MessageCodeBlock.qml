@@ -1,5 +1,6 @@
 pragma ComponentBehavior: Bound
 
+import qs
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
@@ -21,6 +22,15 @@ ColumnLayout {
     property var messageData: {}
     property bool isCommandRequest: segmentLang === "command"
     property var displayLang: (isCommandRequest ? "bash" : segmentLang)
+
+    // Shell dialects we can hand straight to a terminal. Anything else (python,
+    // qml, a diff) would need us to guess an interpreter, so it gets no button
+    // rather than a wrong one. A pending command request is excluded: it already
+    // has its own Approve/Reject below.
+    readonly property string runInTerminalScript: Quickshell.shellPath("scripts/hyprland/runInTerminal.sh")
+    readonly property var runnableLangs: ["bash", "sh", "shell", "shell-session", "console", "zsh", "fish", "command"]
+    readonly property bool runnable: root.runnableLangs.indexOf(String(root.segmentLang ?? "").toLowerCase()) !== -1
+        && !(root.messageData?.functionPending ?? false)
 
     property real codeBlockBackgroundRounding: Appearance.rounding.small
     property real codeBlockHeaderPadding: 3
@@ -62,6 +72,64 @@ ColumnLayout {
             Item { Layout.fillWidth: true }
 
             ButtonGroup {
+                AiMessageControlButton {
+                    id: runCodeButton
+                    visible: root.runnable
+                    buttonIcon: activated ? "check" : "play_arrow"
+
+                    onClicked: {
+                        // Hyprland gives the open sidebar exclusive keyboard focus,
+                        // so synthetic keystrokes land in the chat box no matter
+                        // which window is focused. Releasing the grab is not enough
+                        // — the layer surface has to stop asking for the keyboard,
+                        // and the script cannot be launched until it has, since the
+                        // window focus it checks is already correct and tells it
+                        // nothing about where the keys are actually going.
+                        GlobalFocusGrab.dismiss();
+                        GlobalStates.sidebarLeftYieldKeyboard = true;
+                        keyboardYieldTimer.restart();
+                        launchTimer.restart();
+                        runCodeButton.activated = true;
+                        runIconTimer.restart();
+                    }
+
+                    Timer { // Lets the compositor take the keyboard back first
+                        id: launchTimer
+                        interval: 250
+                        repeat: false
+                        onTriggered: {
+                            const terminal = (Config.options.apps.terminal ?? "").split(/\s+/).filter(part => part.length > 0);
+                            // The script reuses a terminal already on this workspace
+                            // and only spawns one when there is nothing to reuse; the
+                            // terminal argv is a fallback, since it picks the same one
+                            // the Super+T keybind does. Passed as argv rather than a
+                            // shell string, so the snippet reaches it verbatim and no
+                            // quoting of ours can mangle it.
+                            Quickshell.execDetached([root.runInTerminalScript, root.segmentContent, ...terminal]);
+                        }
+                    }
+
+                    Timer {
+                        id: runIconTimer
+                        interval: 1500
+                        repeat: false
+                        onTriggered: {
+                            runCodeButton.activated = false
+                        }
+                    }
+
+                    Timer { // Long enough to cover the script's focus wait and typing
+                        id: keyboardYieldTimer
+                        interval: 5000
+                        repeat: false
+                        onTriggered: {
+                            GlobalStates.sidebarLeftYieldKeyboard = false
+                        }
+                    }
+                    StyledToolTip {
+                        text: Translation.tr("Run in a terminal")
+                    }
+                }
                 AiMessageControlButton {
                     id: copyCodeButton
                     buttonIcon: activated ? "inventory" : "content_copy"

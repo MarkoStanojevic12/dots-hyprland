@@ -19,6 +19,7 @@ Item {
     property real padding: 4
     property var inputField: messageInputField
     property bool modelPickerShown: false
+    property bool effortPickerShown: false
     property bool historyShown: false
 
     property bool directoryPickerShown: false
@@ -43,6 +44,13 @@ Item {
         messageInputField.text = `/${command.name} `;
         messageInputField.cursorPosition = messageInputField.text.length;
         messageInputField.forceActiveFocus();
+    }
+
+    // Both pickers live in the same strip above the composer, so opening one
+    // closes the other rather than stacking two panels over the input.
+    function toggleEffortPicker() {
+        root.effortPickerShown = !root.effortPickerShown;
+        if (root.effortPickerShown) root.modelPickerShown = false;
     }
 
     function toggleHistory() {
@@ -73,11 +81,18 @@ Item {
     }
 
     Keys.onPressed: event => {
-        messageInputField.forceActiveFocus();
         if ((event.modifiers & Qt.ControlModifier) && (event.modifiers & Qt.ShiftModifier) && event.key === Qt.Key_O) {
             root.startNewConversation();
             event.accepted = true;
+            return;
         }
+        // Typing anywhere in the tab lands in the composer, but only real
+        // typing. Anything a focused field left unhandled — a bare modifier, an
+        // arrow, Tab — has to stay put, or answering a question yanks the
+        // cursor out of that question's own field.
+        const character = event.text;
+        if (character.length === 0 || character.charCodeAt(0) < 0x20 || character.charCodeAt(0) === 0x7f) return;
+        messageInputField.forceActiveFocus();
     }
 
     function send() {
@@ -193,6 +208,13 @@ Item {
         Revealer { // History list
             vertical: true
             reveal: root.historyShown
+            // Only while open -- the Revealer collapses to nothing when closed,
+            // so an unconditional margin would leave a gap under the header.
+            Layout.bottomMargin: root.historyShown ? 10 : 0
+
+            Behavior on Layout.bottomMargin {
+                animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
+            }
 
             Rectangle {
                 width: mainColumn.width
@@ -253,6 +275,10 @@ Item {
             StyledListView {
                 id: messageListView
                 anchors.fill: parent
+                // The layer above only masks painting, so without this the
+                // delegates scrolled past the top still swallow clicks meant
+                // for the header buttons.
+                clip: true
                 spacing: 14
                 popin: false
                 add: null // Function calls during streaming make this janky
@@ -294,6 +320,13 @@ Item {
             ScrollToBottomButton {
                 target: messageListView
             }
+        }
+
+        Loader { // Signed out — nothing else in the tab will work until it isn't
+            Layout.fillWidth: true
+            active: ClaudeCode.signedOut
+            visible: active
+            sourceComponent: SignInCard {}
         }
 
         Loader { // Claude asking something, answered by clicking
@@ -541,6 +574,40 @@ Item {
                     }
                 }
 
+                Revealer { // Effort picker
+                    vertical: true
+                    reveal: root.effortPickerShown
+
+                    FlowButtonGroup {
+                        width: inputColumn.width
+                        spacing: 4
+
+                        Repeater {
+                            model: ClaudeCode.availableEfforts
+
+                            SelectionGroupButton {
+                                required property var modelData
+                                leftmost: true
+                                rightmost: true
+                                verticalPadding: 5
+                                buttonText: modelData.name
+                                toggled: ClaudeCode.selectedEffort === modelData.alias
+                                // The CLI has to restart to pick this up, so not
+                                // in the middle of a turn.
+                                enabled: !ClaudeCode.busy
+                                onClicked: {
+                                    ClaudeCode.setEffort(modelData.alias);
+                                    root.effortPickerShown = false;
+                                }
+
+                                StyledToolTip {
+                                    text: modelData.description
+                                }
+                            }
+                        }
+                    }
+                }
+
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 0
@@ -634,7 +701,10 @@ Item {
                         implicitWidth: modelButtonRow.implicitWidth + 16
                         buttonRadius: Appearance.rounding.full
                         toggled: root.modelPickerShown
-                        onClicked: root.modelPickerShown = !root.modelPickerShown
+                        onClicked: {
+                            root.modelPickerShown = !root.modelPickerShown;
+                            if (root.modelPickerShown) root.effortPickerShown = false;
+                        }
 
                         contentItem: RowLayout {
                             id: modelButtonRow
@@ -657,6 +727,39 @@ Item {
                             text: ClaudeCode.modelName.length > 0
                                 ? Translation.tr("Model: %1").arg(ClaudeCode.modelName)
                                 : Translation.tr("Choose a model")
+                        }
+                    }
+
+                    RippleButton { // How hard it thinks
+                        id: effortButton
+                        implicitHeight: 28
+                        implicitWidth: effortButtonRow.implicitWidth + 16
+                        buttonRadius: Appearance.rounding.full
+                        toggled: root.effortPickerShown
+                        enabled: !ClaudeCode.busy
+                        onClicked: root.toggleEffortPicker()
+
+                        contentItem: RowLayout {
+                            id: effortButtonRow
+                            anchors.centerIn: parent
+                            spacing: 2
+
+                            MaterialSymbol {
+                                iconSize: Appearance.font.pixelSize.normal
+                                color: effortButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colSubtext
+                                text: "psychology"
+                            }
+                            StyledText {
+                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                color: effortButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer2
+                                text: ClaudeCode.selectedEffortName
+                            }
+                        }
+
+                        StyledToolTip {
+                            text: ClaudeCode.busy
+                                ? Translation.tr("Can't change effort while Claude is working")
+                                : Translation.tr("How hard Claude thinks. Changing it restarts the CLI\nand resumes this conversation on the next message.")
                         }
                     }
 

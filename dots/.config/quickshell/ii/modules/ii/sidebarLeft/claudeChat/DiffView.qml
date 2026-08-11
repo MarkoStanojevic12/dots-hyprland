@@ -85,12 +85,16 @@ ColumnLayout {
         Item { Layout.fillWidth: true }
     }
 
-    Rectangle {
+    CopyableBox {
         Layout.fillWidth: true
         implicitHeight: diffColumn.implicitHeight + 8
-        radius: Appearance.rounding.verysmall
-        color: Appearance.colors.colLayer1
         clip: true
+        // The text as it will exist afterwards, not the +/- rendering — the
+        // marked-up version is for reading, and pasting it anywhere would just
+        // mean stripping the signs back off. Copies in full even when the view
+        // above is cut off at shownLimit.
+        copyText: root.newText
+        hint: Translation.tr("Click to copy the new text")
 
         ColumnLayout {
             id: diffColumn

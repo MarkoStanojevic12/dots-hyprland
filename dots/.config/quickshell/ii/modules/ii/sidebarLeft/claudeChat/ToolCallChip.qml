@@ -23,7 +23,9 @@ Rectangle {
     readonly property bool isTodo: root.toolName === "TodoWrite" && Array.isArray(root.input?.todos)
     readonly property bool isBash: root.toolName === "Bash" && (root.input?.command !== undefined)
 
-    property bool expanded: false
+    // Edits open on their own — the diff is the point of the chip. Bash stays
+    // shut until asked. Clicking breaks the binding, so a manual toggle sticks.
+    property bool expanded: root.isEdit || root.isWrite
 
     Layout.fillWidth: true
     implicitHeight: contentColumn.implicitHeight + 8 * 2

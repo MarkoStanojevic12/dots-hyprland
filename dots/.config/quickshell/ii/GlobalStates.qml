@@ -12,6 +12,10 @@ Singleton {
     property bool barOpen: true
     property bool crosshairOpen: false
     property bool sidebarLeftOpen: false
+    // Hyprland treats the sidebar's OnDemand keyboard focus as Exclusive, so an
+    // open sidebar swallows every keystroke no matter which window is focused.
+    // Anything that needs to type into another window raises this first.
+    property bool sidebarLeftYieldKeyboard: false
     property bool sidebarRightOpen: false
     property bool mediaControlsOpen: false
     property bool osdBrightnessOpen: false
