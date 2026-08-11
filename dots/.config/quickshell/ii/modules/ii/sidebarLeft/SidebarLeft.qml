@@ -58,6 +58,13 @@ Scope { // Scope
         else root.pin = !root.pin;
     }
 
+    // Persisted so the sidebar comes back locked across restarts
+    readonly property bool lock: Config.options.sidebar.lockLeft
+
+    function toggleLock() {
+        Config.options.sidebar.lockLeft = !Config.options.sidebar.lockLeft;
+    }
+
     Component.onCompleted: {
         root.sidebarContent = contentComponent.createObject(null, {
             "scopeRoot": root,
@@ -112,7 +119,11 @@ Scope { // Scope
             implicitWidth: Appearance.sizes.sidebarLeftMaxWidth + Appearance.sizes.elevationMargin
             WlrLayershell.namespace: "quickshell:sidebarLeft"
             // Hyprland 0.49: OnDemand is Exclusive, Exclusive just breaks click-outside-to-close
-            WlrLayershell.keyboardFocus: WlrKeyboardFocus.OnDemand
+            // Which also means an open sidebar eats every keystroke, so anything
+            // sending synthetic input elsewhere has to make it drop the keyboard
+            // outright — focusing another window is not enough.
+            WlrLayershell.keyboardFocus: GlobalStates.sidebarLeftYieldKeyboard
+                ? WlrKeyboardFocus.None : WlrKeyboardFocus.OnDemand
             color: "transparent"
 
             anchors {
@@ -136,9 +147,23 @@ Scope { // Scope
                     GlobalFocusGrab.removeDismissable(panelWindow);
                 }
             }
+            // A dismiss we ignored still dropped us from the grab list, so an
+            // open sidebar has to re-register on unlock or click-outside stays dead
+            Connections {
+                target: root
+                function onLockChanged() {
+                    if (!root.lock && panelWindow.visible) {
+                        GlobalFocusGrab.addDismissable(panelWindow);
+                    }
+                }
+            }
             Connections {
                 target: GlobalFocusGrab
                 function onDismissed() {
+                    // Locked: stay put and close only on Esc or the toggle shortcut.
+                    // The registration above is kept either way so the sidebar still
+                    // takes keyboard focus when opened.
+                    if (root.lock) return;
                     panelWindow.hide();
                 }
             }
@@ -178,6 +203,8 @@ Scope { // Scope
                             root.toggleDetach();
                         } else if (event.key === Qt.Key_P) {
                             root.togglePin();
+                        } else if (event.key === Qt.Key_L) {
+                            root.toggleLock();
                         }
                         event.accepted = true;
                     }

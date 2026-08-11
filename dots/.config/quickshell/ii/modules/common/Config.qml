@@ -565,6 +565,9 @@ Singleton {
 
             property JsonObject sidebar: JsonObject {
                 property bool keepRightSidebarLoaded: true
+                // When locked, the left sidebar ignores click-outside/focus loss
+                // and closes only on Esc or its toggle shortcut.
+                property bool lockLeft: false
                 // Panel widths in px. Left and right are independent.
                 property int widthLeft: 460
                 // Width of the left sidebar when its "extend" toggle is on.
@@ -583,6 +586,10 @@ Singleton {
                 }
                 property JsonObject claude: JsonObject {
                     property bool enable: true
+                    // Reading size for the chat prose. 14 is about 10% above the
+                    // 13px UI font VS Code renders its own chat at; the shell's
+                    // own scale (small = 15) reads large next to it.
+                    property int fontSize: 14
                     // Sound when Claude needs an answer here (a permission
                     // prompt or a question). The *finished* sound is not set
                     // here: the Stop hook in ~/.claude/settings.json fires for
@@ -599,6 +606,9 @@ Singleton {
                     // CLI model alias ("opus", "sonnet[1m]", "haiku"…).
                     // Empty = whatever `claude` itself defaults to.
                     property string model: ""
+                    // Reasoning effort: low, medium, high, xhigh or max.
+                    // Empty = whatever ~/.claude/settings.json sets.
+                    property string effort: ""
                     // "ask": confirm each tool the CLI isn't already allowed
                     // to use. "bypass": let it act unattended.
                     property string permissionMode: "ask"

@@ -85,6 +85,73 @@ Singleton {
     }
 
     // ------------------------------------------------------------------
+    // Authentication
+    // ------------------------------------------------------------------
+
+    // The CLI runs on whatever `claude auth login` left in
+    // ~/.claude/.credentials.json, and those credentials expire. Error text is
+    // not worth pattern-matching, so when a turn fails we just ask the CLI:
+    // `auth status` is authoritative, offline and fast.
+    property bool signedOut: false
+    property bool authChecking: false
+    property string authEmail: ""
+
+    function checkAuth() {
+        if (root.authChecking || root.cliPath.length === 0) return;
+        root.authChecking = true;
+        authStatusProcess.running = false;
+        authStatusProcess.running = true;
+    }
+
+    // Signing in is a browser round trip the sidebar cannot host, so it goes to
+    // a terminal — the configured one takes a trailing command, as kitty does.
+    function signIn() {
+        if (root.cliPath.length === 0) return;
+        Quickshell.execDetached(["bash", "-c",
+            `${Config.options.apps.terminal} ${root.cliPath} auth login`]);
+    }
+
+    // ------------------------------------------------------------------
+    // Reasoning effort
+    // ------------------------------------------------------------------
+
+    // What --effort accepts. Empty leaves it to ~/.claude/settings.json,
+    // which is where the global default lives.
+    readonly property var availableEfforts: [
+        { alias: "", name: Translation.tr("Default"), description: Translation.tr("Whatever ~/.claude/settings.json sets") },
+        { alias: "low", name: Translation.tr("Low"), description: Translation.tr("Quickest, least deliberation") },
+        { alias: "medium", name: Translation.tr("Medium"), description: Translation.tr("Balanced") },
+        { alias: "high", name: Translation.tr("High"), description: Translation.tr("Thinks longer before acting") },
+        { alias: "xhigh", name: Translation.tr("Extra high"), description: Translation.tr("Slower still, for tangled problems") },
+        { alias: "max", name: Translation.tr("Max"), description: Translation.tr("Everything it has, and the slowest") }
+    ]
+
+    property string selectedEffort: ""
+
+    readonly property string selectedEffortName: {
+        const match = root.availableEfforts.find(effort => effort.alias === root.selectedEffort);
+        return match ? match.name : root.selectedEffort;
+    }
+
+    // The effort the running process was spawned with; see spawnModel.
+    property string spawnEffort: ""
+
+    // Unlike the model, effort has no control-request equivalent — the CLI only
+    // takes it as a spawn flag — so switching means bringing the process back
+    // up. Pointing the next spawn at the session it was already on keeps the
+    // conversation; the restart itself is deferred to the next message, so
+    // changing this between turns costs nothing.
+    function setEffort(alias) {
+        if (alias === root.selectedEffort) return;
+        root.selectedEffort = alias;
+        if (root.options) root.options.effort = alias;
+        if (claudeProcess.running) {
+            root.resumeSessionId = root.sessionId;
+            claudeProcess.running = false;
+        }
+    }
+
+    // ------------------------------------------------------------------
     // Tool permissions
     // ------------------------------------------------------------------
 
@@ -285,8 +352,11 @@ Singleton {
     // transcript lags the stream by a beat, and a reload lands mid-turn, so
     // the transcript is missing precisely the reply that was interrupted.
     function rememberSession() {
-        if (root.sessionId.length === 0) return;
-        sessionState.sessionId = root.sessionId;
+        // After an interrupt the live id is gone but the session is still
+        // resumable, so fall back to the id the next spawn will resume from.
+        const id = root.sessionId.length > 0 ? root.sessionId : root.resumeSessionId;
+        if (id.length === 0) return;
+        sessionState.sessionId = id;
         sessionState.workingDirectory = root.workingDirectory;
         sessionState.messages = root.messageIDs.slice(-200).map(id => {
             const message = root.messageByID[id];
@@ -296,6 +366,7 @@ Singleton {
                 model: message.model,
                 done: message.done,
                 isError: message.isError,
+                interrupted: message.interrupted,
                 thinkingTokens: message.thinkingTokens,
                 // Inputs can carry whole file contents; the chip detail is
                 // enough to redraw the history.
@@ -304,7 +375,8 @@ Singleton {
                     name: call.name,
                     icon: call.icon,
                     detail: call.detail,
-                    status: call.status
+                    status: call.status,
+                    contentOffset: call.contentOffset ?? 0
                 }))
             };
         });
@@ -346,13 +418,17 @@ Singleton {
             message.toolCalls = (entry.toolCalls ?? []).map(call =>
                 call.status === "running" ? Object.assign({}, call, { status: "done" }) : call);
             message.done = true;
+            // Survives a second reload, so the offer to resume doesn't vanish
+            // just because the shell restarted again before it was taken up.
+            message.interrupted = entry.interrupted ?? false;
         }
 
-        // A reply cut off by the reload should say so rather than just stop.
+        // A reply cut off by the reload should say so rather than just stop —
+        // as a flag rather than appended prose, so the view can offer to resume
+        // instead of leaving the user to retype the request.
         const last = root.messageByID[root.messageIDs[root.messageIDs.length - 1]];
         if (last && last.role === "assistant" && stored[stored.length - 1].done === false) {
-            last.content += (last.content.length > 0 ? "\n\n" : "")
-                + Translation.tr("_Interrupted — the shell reloaded. Ask again to continue._");
+            last.interrupted = true;
         }
     }
 
@@ -616,10 +692,20 @@ Singleton {
         });
     }
 
-    // Whichever editor is around. The desktop's default handler is a poor
-    // fallback for source files — it tends to route them to a word processor
-    // or a browser — so it is only used when no editor turns up.
+    // Whichever editor is around, in order of preference. The desktop's default
+    // handler is a poor fallback for source files — it tends to route them to a
+    // word processor or a browser — so it is only used when no editor turns up.
     property string editorPath: ""
+
+    // Editors disagree on how to say "this file, at this line", so the command
+    // shape follows whichever one was found.
+    function editorCommand(path, line) {
+        const target = line.length > 0 ? `${path}:${line}` : path;
+        // -client hands the file to the window that is already open instead of
+        // starting a second Qt Creator every time a link is clicked.
+        if (root.editorPath.endsWith("qtcreator")) return [root.editorPath, "-client", target];
+        return [root.editorPath, "--goto", target];
+    }
 
     function openFileReference(link) {
         const url = String(link);
@@ -631,7 +717,7 @@ Singleton {
         const line = hash >= 0 ? url.slice(hash + 2) : "";
         const path = decodeURI(url.slice("file://".length, hash >= 0 ? hash : undefined));
         if (root.editorPath.length > 0) {
-            Quickshell.execDetached([root.editorPath, "--goto", line.length > 0 ? `${path}:${line}` : path]);
+            Quickshell.execDetached(root.editorCommand(path, line));
         } else {
             Qt.openUrlExternally(`file://${encodeURI(path)}`);
         }
@@ -680,6 +766,15 @@ Singleton {
         root.queuedMessages = root.queuedMessages.filter((_, i) => i !== index);
     }
 
+    // Picking a cut-off turn back up. The CLI session is still resumable, so
+    // this is an ordinary message — the flag only decides whether the offer is
+    // on screen, and it clears whether or not the send goes through, since a
+    // second press would only queue the same request twice.
+    function continueInterrupted(message) {
+        if (message) message.interrupted = false;
+        root.sendMessage(Translation.tr("Continue where you left off."));
+    }
+
     function sendMessage(text) {
         const trimmed = text.trim();
         if (trimmed.length === 0) return;
@@ -700,6 +795,7 @@ Singleton {
 
         if (!claudeProcess.running) {
             root.spawnModel = root.selectedModel;
+            root.spawnEffort = root.selectedEffort;
             root.spawnResumeId = root.resumeSessionId;
             claudeProcess.running = true;
             // The reply to this carries the slash command list.
@@ -718,6 +814,7 @@ Singleton {
         root.messageIDs = [];
         root.messageByID = ({});
         root.currentAssistantId = "";
+        root.thinkingStartedAt = 0;
         root.sessionId = "";
         root.busy = false;
         root.contextTokens = 0;
@@ -745,10 +842,16 @@ Singleton {
 
     function interrupt() {
         if (!root.busy) return;
+        root.flushThought();
         // Answering first keeps the CLI from blocking on a prompt nobody
         // will ever click once the process is gone.
         if (root.pendingPermission) root.answerPermission("deny", null);
         if (root.pendingQuestion) root.dismissQuestion();
+        // The CLI records the interrupt in its transcript and the session stays
+        // resumable, so claim the id before onExited clears it. Without this the
+        // next message spawns a blank session and the conversation on screen is
+        // one the agent has never seen.
+        if (root.sessionId.length > 0) root.resumeSessionId = root.sessionId;
         claudeProcess.running = false;
         root.busy = false;
         root.queuedMessages = [];
@@ -760,6 +863,9 @@ Singleton {
             }
         }
         root.currentAssistantId = "";
+        // busy just went false, so the checkpoint timer has stopped; this is the
+        // last chance to persist the interrupted turn for a later reload.
+        root.rememberSession();
     }
 
     // ------------------------------------------------------------------
@@ -860,9 +966,11 @@ Singleton {
         return root.truncate(value);
     }
 
-    function addToolCall(id, name, input) {
+    function addToolCall(id, name, input, contentOffset) {
         const message = root.currentAssistant();
         if (!message) return;
+        // A thought that ran right up to this call belongs above it.
+        root.flushThought();
         message.toolCalls = [...message.toolCalls, {
             id: id,
             name: name,
@@ -870,7 +978,41 @@ Singleton {
             detail: root.toolDetail(name, input),
             // Kept so the chip can expand into a diff or a todo list.
             input: input ?? ({}),
-            status: "running"
+            status: "running",
+            // How far into the prose this happened, so the timeline can put the
+            // chip back between the paragraphs it actually interrupted.
+            contentOffset: contentOffset ?? message.content.length
+        }];
+    }
+
+    // Thinking arrives as size estimates with no text attached, so the only
+    // thing there is to report is how long it went on for. Timed here and
+    // folded into the same list as the tool calls, which makes it one entry in
+    // the timeline rather than a second thing the view has to interleave.
+    property double thinkingStartedAt: 0
+    property int thoughtCounter: 0
+    readonly property int minReportedThinkingMs: 1000
+
+    function noteThinking() {
+        if (root.thinkingStartedAt === 0) root.thinkingStartedAt = Date.now();
+    }
+
+    function flushThought() {
+        if (root.thinkingStartedAt === 0) return;
+        const elapsed = Date.now() - root.thinkingStartedAt;
+        root.thinkingStartedAt = 0;
+        // A sub-second pause is noise, not a step worth a row of its own.
+        if (elapsed < root.minReportedThinkingMs) return;
+        const message = root.currentAssistant();
+        if (!message) return;
+        root.thoughtCounter += 1;
+        message.toolCalls = [...message.toolCalls, {
+            id: `thought_${root.thoughtCounter}`,
+            name: "__thought",
+            icon: "neurology",
+            detail: Translation.tr("Thought for %1s").arg(Math.round(elapsed / 1000)),
+            status: "done",
+            contentOffset: message.content.length
         }];
     }
 
@@ -966,11 +1108,15 @@ Singleton {
             root.streamedText = "";
         } else if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
             const chunk = event.delta.text ?? "";
+            // Prose starting is what ends a thought, and it has to close before
+            // the chunk lands so the entry sits above the text and not after it.
+            root.flushThought();
             root.streamedText += chunk;
             root.appendAssistantText(chunk);
         } else if (event.type === "content_block_delta" && event.delta?.type === "thinking_delta") {
             // The thinking text itself never arrives — only a running estimate
             // of how much of it there is — so that count is what we show.
+            root.noteThinking();
             const message = root.currentAssistant();
             if (message) {
                 message.thinkingTokens = Math.max(message.thinkingTokens, event.delta.estimated_tokens ?? 0);
@@ -986,23 +1132,38 @@ Singleton {
         if (message.model) assistant.model = message.model;
         root.updateContextTokens(message.usage);
 
-        // Reconcile the streamed preview against the authoritative text.
+        root.flushThought();
+
+        // Reconcile the streamed preview against the authoritative text. Tool
+        // calls are collected rather than registered inside the loop: a tool_use
+        // block comes after the text of the same message, so where it belongs is
+        // only known once that text has been placed.
         let finalText = "";
+        const toolBlocks = [];
         for (const block of (message.content ?? [])) {
             if (block.type === "text") {
                 finalText += block.text ?? "";
             } else if (block.type === "tool_use") {
-                root.addToolCall(block.id, block.name, block.input);
+                toolBlocks.push({ block: block, offset: finalText.length });
             }
         }
 
+        let textStart = assistant.content.length;
         if (finalText.length > 0) {
             if (root.streamedText.length > 0 && assistant.content.endsWith(root.streamedText)) {
                 // Swap the preview for the final text rather than duplicating it.
-                assistant.content = assistant.content.slice(0, assistant.content.length - root.streamedText.length) + finalText;
+                textStart = assistant.content.length - root.streamedText.length;
+                assistant.content = assistant.content.slice(0, textStart) + finalText;
             } else if (!assistant.content.endsWith(finalText)) {
-                assistant.content += (assistant.content.length > 0 ? "\n\n" : "") + finalText;
+                const separator = assistant.content.length > 0 ? "\n\n" : "";
+                textStart = assistant.content.length + separator.length;
+                assistant.content += separator + finalText;
+            } else {
+                textStart = assistant.content.length - finalText.length;
             }
+        }
+        for (const pending of toolBlocks) {
+            root.addToolCall(pending.block.id, pending.block.name, pending.block.input, textStart + pending.offset);
         }
         root.streamedText = "";
     }
@@ -1037,7 +1198,13 @@ Singleton {
     }
 
     function finishTurn(event) {
+        // A turn that thought and then stopped without saying anything still
+        // spent the time, so close the thought before the message goes final.
+        root.flushThought();
         root.updateContextLimit(event.modelUsage);
+        // A turn that came back at all proves the credentials are good, which
+        // also clears the card after a sign-in the sidebar never saw happen.
+        if (!event.is_error && event.subtype === "success") root.signedOut = false;
         const assistant = root.currentAssistant();
         if (assistant) {
             assistant.done = true;
@@ -1046,6 +1213,9 @@ Singleton {
                 if (assistant.content.length === 0) {
                     assistant.content = event.result ?? Translation.tr("The request failed.");
                 }
+                // Expired credentials look like any other failed turn from
+                // here, so let the CLI say whether that is what this was.
+                root.checkAuth();
             } else if (assistant.content.length === 0 && (event.result ?? "").length > 0) {
                 assistant.content = event.result;
             }
@@ -1093,6 +1263,7 @@ Singleton {
             "--strict-mcp-config",
             "--append-system-prompt", root.options?.systemPrompt ?? "",
             ...(root.spawnModel.length > 0 ? ["--model", root.spawnModel] : []),
+            ...(root.spawnEffort.length > 0 ? ["--effort", root.spawnEffort] : []),
             ...(root.spawnResumeId.length > 0 ? ["--resume", root.spawnResumeId] : [])
         ]
 
@@ -1130,6 +1301,30 @@ Singleton {
                 root.currentAssistantId = "";
             }
             root.sessionId = "";
+            // A process that dies on its own is the other face of an expired
+            // session: it never gets far enough to report a failed turn.
+            if (exitCode !== 0) root.checkAuth();
+        }
+    }
+
+    Process {
+        id: authStatusProcess
+        command: [root.cliPath, "auth", "status"]
+        stdout: StdioCollector {
+            id: authStatusCollector
+            onStreamFinished: {
+                try {
+                    const status = JSON.parse(authStatusCollector.text);
+                    root.signedOut = status.loggedIn === false;
+                    root.authEmail = status.email ?? "";
+                } catch (e) {
+                    // Unparsable output tells us nothing; leave the flag as it
+                    // was rather than claiming a session is fine or broken.
+                }
+            }
+        }
+        onExited: (exitCode, exitStatus) => {
+            root.authChecking = false;
         }
     }
 
@@ -1152,7 +1347,7 @@ Singleton {
     Process {
         id: findEditorProcess
         running: true
-        command: ["bash", "-c", "command -v code || command -v codium || command -v code-insiders || true"]
+        command: ["bash", "-c", "command -v qtcreator || command -v code || command -v codium || command -v code-insiders || true"]
         stdout: SplitParser {
             onRead: data => {
                 const path = data.trim();
@@ -1167,5 +1362,6 @@ Singleton {
         const configured = (options?.cliPath ?? "").trim();
         if (configured.length > 0) root.cliPath = configured;
         root.selectedModel = options?.model ?? "";
+        root.selectedEffort = options?.effort ?? "";
     }
 }

@@ -37,9 +37,12 @@ ColumnLayout {
     // prose around it.
     property color inlineCodeBackground: Appearance.m3colors.m3surfaceContainerHighest
     property color inlineCodeColor: Appearance.m3colors.m3onSurface
+    // Overridable so a tab can set its own reading size without moving the
+    // shell's type scale out from under everything else.
+    property int bodyFontSize: Appearance.font.pixelSize.small
     // Monospace sits optically larger than the reading face at a matched
     // size, so it's nudged down to keep the line rhythm even.
-    property int inlineCodeFontSize: Math.round(Appearance.font.pixelSize.small * 0.94)
+    property int inlineCodeFontSize: Math.round(root.bodyFontSize * 0.94)
 
     property list<string> renderedLatexHashes: []
     property string renderedSegmentContent: ""
@@ -174,7 +177,7 @@ ColumnLayout {
             renderType: Text.NativeRendering
             font.family: Appearance.font.family.reading
             font.hintingPreference: Font.PreferNoHinting // Prevent weird bold text
-            font.pixelSize: Appearance.font.pixelSize.small
+            font.pixelSize: root.bodyFontSize
             selectedTextColor: Appearance.m3colors.m3onSecondaryContainer
             selectionColor: Appearance.colors.colSecondaryContainer
             wrapMode: TextEdit.Wrap

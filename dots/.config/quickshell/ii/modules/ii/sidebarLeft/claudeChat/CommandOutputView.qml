@@ -22,11 +22,11 @@ ColumnLayout {
 
     spacing: 3
 
-    Rectangle { // in
+    CopyableBox { // in
         Layout.fillWidth: true
         implicitHeight: commandText.implicitHeight + 10
-        radius: Appearance.rounding.verysmall
-        color: Appearance.colors.colLayer1
+        copyText: root.command
+        hint: Translation.tr("Click to copy the command")
 
         RowLayout {
             anchors {
@@ -57,12 +57,14 @@ ColumnLayout {
         }
     }
 
-    Rectangle { // out
+    CopyableBox { // out
         Layout.fillWidth: true
         visible: root.lines.length > 0 || root.running
         implicitHeight: outputColumn.implicitHeight + 10
-        radius: Appearance.rounding.verysmall
-        color: Appearance.colors.colLayer1
+        // The whole thing, including the lines past shownLimit that the view
+        // only counts — that is usually the reason for copying it at all.
+        copyText: root.output
+        hint: Translation.tr("Click to copy the output")
 
         ColumnLayout {
             id: outputColumn
