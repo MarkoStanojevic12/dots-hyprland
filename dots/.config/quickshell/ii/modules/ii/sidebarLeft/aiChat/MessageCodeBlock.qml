@@ -23,6 +23,15 @@ ColumnLayout {
     property bool isCommandRequest: segmentLang === "command"
     property var displayLang: (isCommandRequest ? "bash" : segmentLang)
 
+    // A markdown block is the one case where the snippet is a document rather
+    // than something to run: what matters is how it will read once it lands
+    // wherever it's going, so it gets the compose-box treatment.
+    readonly property bool previewable: ["markdown", "md"].indexOf(String(root.segmentLang ?? "").toLowerCase()) !== -1
+    property bool showPreview: false
+    // Editing is always done against the source — a preview that silently ate
+    // keystrokes would be worse than no preview.
+    readonly property bool previewing: root.previewable && root.showPreview && !root.editing
+
     // Shell dialects we can hand straight to a terminal. Anything else (python,
     // qml, a diff) would need us to guess an interpreter, so it gets no button
     // rather than a wrong one. A pending command request is excluded: it already
@@ -67,6 +76,40 @@ ColumnLayout {
                 font.weight: Font.DemiBold
                 color: Appearance.colors.colOnLayer2
                 text: root.displayLang ? Repository.definitionForName(root.displayLang).name : "plain"
+            }
+
+            ButtonGroup { // Source vs. how it will actually read
+                visible: root.previewable
+                Layout.alignment: Qt.AlignVCenter
+                Layout.leftMargin: 8
+                spacing: 2
+
+                GroupButton {
+                    baseHeight: 24
+                    horizontalPadding: 10
+                    verticalPadding: 2
+                    toggled: !root.showPreview
+                    onClicked: root.showPreview = false
+
+                    contentItem: StyledText {
+                        text: Translation.tr("Source")
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        color: root.showPreview ? Appearance.colors.colOnLayer2 : Appearance.colors.colOnPrimary
+                    }
+                }
+                GroupButton {
+                    baseHeight: 24
+                    horizontalPadding: 10
+                    verticalPadding: 2
+                    toggled: root.showPreview
+                    onClicked: root.showPreview = true
+
+                    contentItem: StyledText {
+                        text: Translation.tr("Preview")
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        color: root.showPreview ? Appearance.colors.colOnPrimary : Appearance.colors.colOnLayer2
+                    }
+                }
             }
 
             Item { Layout.fillWidth: true }
@@ -188,6 +231,7 @@ ColumnLayout {
 
     RowLayout { // Line numbers and code
         spacing: codeBlockComponentSpacing
+        visible: !root.previewing
 
         Rectangle { // Line numbers
             implicitWidth: 40
@@ -357,6 +401,44 @@ ColumnLayout {
             //         event.accepted = false
             //     }
             // }
+        }
+    }
+
+    Loader { // The same renderer the chat's own prose goes through
+        Layout.fillWidth: true
+        active: root.previewing
+        visible: active
+
+        sourceComponent: Rectangle {
+            implicitHeight: previewColumnLayout.implicitHeight + 20
+            topLeftRadius: Appearance.rounding.unsharpen
+            topRightRadius: Appearance.rounding.unsharpen
+            bottomLeftRadius: root.codeBlockBackgroundRounding
+            bottomRightRadius: root.codeBlockBackgroundRounding
+            color: Appearance.colors.colLayer2
+
+            ColumnLayout {
+                id: previewColumnLayout
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    top: parent.top
+                    leftMargin: 10
+                    rightMargin: 10
+                    topMargin: 10
+                }
+
+                MessageTextBlock {
+                    Layout.fillWidth: true
+                    enableMouseSelection: root.enableMouseSelection
+                    segmentContent: root.segmentContent
+                    messageData: root.messageData
+                    done: true
+                    // The document is already whole by the time it can be
+                    // previewed; the fade-in chunking is for streaming prose.
+                    forceDisableChunkSplitting: true
+                }
+            }
         }
     }
 }

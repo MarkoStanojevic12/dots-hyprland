@@ -103,7 +103,10 @@ Singleton {
      * @returns {Array<{type: "text" | "think" | "code", content: string, lang?: string, completed?: boolean}>}
      */
     function splitMarkdownBlocks(markdown) {
-        const regex = /```(\w+)?\n([\s\S]*?)```|<think>([\s\S]*?)<\/think>/g;
+        // The fence run is captured and back-referenced, so a ````-fenced block
+        // holding its own ```-fenced snippet stays one block instead of being
+        // cut in half at the inner fence.
+        const regex = /(`{3,})(\w+)?\n([\s\S]*?)\1|<think>([\s\S]*?)<\/think>/g;
         /**
          * @type {{type: "text" | "think" | "code"; content: string; lang: string | undefined; completed: boolean | undefined}[]}
          */
@@ -121,19 +124,19 @@ Singleton {
                 }
             }
             if (match[0].startsWith('```')) {
-                if (match[2] && match[2].trim()) {
+                if (match[3] && match[3].trim()) {
                     result.push({
                         type: "code",
-                        lang: match[1] || "",
-                        content: match[2],
+                        lang: match[2] || "",
+                        content: match[3],
                         completed: true
                     });
                 }
             } else if (match[0].startsWith('<think>')) {
-                if (match[3] && match[3].trim()) {
+                if (match[4] && match[4].trim()) {
                     result.push({
                         type: "think",
-                        content: match[3],
+                        content: match[4],
                         completed: true
                     });
                 }
@@ -170,15 +173,15 @@ Singleton {
                         content: beforeCode
                     });
                 }
-                // Try to detect language after ```
-                const codeLangMatch = text.slice(codeStart + 3).match(/^(\w+)?\n/);
+                // Opening fence of a block still being streamed: take the whole
+                // backtick run and the language after it, so a ````-fenced block
+                // doesn't start with a stray backtick in its first line.
+                const fenceMatch = text.slice(codeStart).match(/^(`{3,})(\w+)?\n/);
                 let lang = "";
                 let codeContentStart = codeStart + 3;
-                if (codeLangMatch) {
-                    lang = codeLangMatch[1] || "";
-                    codeContentStart += codeLangMatch[0].length;
-                } else if (text[codeStart + 3] === '\n') {
-                    codeContentStart += 1;
+                if (fenceMatch) {
+                    lang = fenceMatch[2] || "";
+                    codeContentStart = codeStart + fenceMatch[0].length;
                 }
                 const codeContent = text.slice(codeContentStart);
                 if (codeContent.trim()) {
