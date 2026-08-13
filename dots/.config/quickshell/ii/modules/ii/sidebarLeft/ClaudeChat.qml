@@ -21,6 +21,7 @@ Item {
     property bool modelPickerShown: false
     property bool effortPickerShown: false
     property bool historyShown: false
+    property bool usefulFeaturesShown: false
 
     property bool directoryPickerShown: false
 
@@ -53,10 +54,36 @@ Item {
         if (root.effortPickerShown) root.modelPickerShown = false;
     }
 
+    // History and the feature list both drop out of the header, so opening one
+    // closes the other rather than stacking two panels over the messages.
     function toggleHistory() {
         root.historyShown = !root.historyShown;
-        if (root.historyShown) ClaudeCode.refreshSessions();
+        if (root.historyShown) {
+            root.usefulFeaturesShown = false;
+            ClaudeCode.refreshSessions();
+        }
     }
+
+    function toggleUsefulFeatures() {
+        root.usefulFeaturesShown = !root.usefulFeaturesShown;
+        if (root.usefulFeaturesShown) root.historyShown = false;
+    }
+
+    function runFeature(feature) {
+        root.usefulFeaturesShown = false;
+        ClaudeCode.sendMessage(feature.prompt);
+        messageListView.positionViewAtEnd();
+    }
+
+    UsefulFeatures {
+        id: usefulFeatures
+    }
+
+    readonly property var availableFeatures: usefulFeatures.forDirectory(ClaudeCode.workingDirectory)
+
+    // Moving somewhere with nothing on offer would otherwise leave an empty
+    // panel hanging under a button that is no longer there.
+    onAvailableFeaturesChanged: if (root.availableFeatures.length === 0) root.usefulFeaturesShown = false;
 
     function toggleDirectoryPicker() {
         root.directoryPickerShown = !root.directoryPickerShown;
@@ -201,6 +228,65 @@ Item {
 
                 StyledToolTip {
                     text: Translation.tr("Open claude.ai")
+                }
+            }
+
+            RippleButton { // Saved prompts
+                id: usefulFeaturesButton
+                visible: root.availableFeatures.length > 0
+                implicitWidth: 32
+                implicitHeight: 32
+                buttonRadius: Appearance.rounding.small
+                toggled: root.usefulFeaturesShown
+                onClicked: root.toggleUsefulFeatures()
+
+                contentItem: MaterialSymbol {
+                    anchors.centerIn: parent
+                    horizontalAlignment: Text.AlignHCenter
+                    iconSize: Appearance.font.pixelSize.larger
+                    color: usefulFeaturesButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer1
+                    text: "bolt"
+                }
+
+                StyledToolTip {
+                    text: Translation.tr("Useful features")
+                }
+            }
+        }
+
+        Revealer { // Useful features
+            vertical: true
+            reveal: root.usefulFeaturesShown
+            Layout.bottomMargin: root.usefulFeaturesShown ? 10 : 0
+
+            Behavior on Layout.bottomMargin {
+                animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
+            }
+
+            Rectangle {
+                width: mainColumn.width
+                implicitHeight: featureColumn.implicitHeight + 8
+                radius: Appearance.rounding.small
+                color: Appearance.colors.colLayer2
+
+                ColumnLayout {
+                    id: featureColumn
+                    anchors {
+                        fill: parent
+                        margins: 4
+                    }
+                    spacing: 2
+
+                    Repeater {
+                        model: root.availableFeatures
+
+                        delegate: UsefulFeatureItem {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            feature: modelData
+                            onClicked: root.runFeature(modelData)
+                        }
+                    }
                 }
             }
         }

@@ -216,7 +216,7 @@ def list_dirs():
 
     Read out of the transcripts rather than decoded from the directory names:
     the encoding turns slashes into dashes, which cannot be reversed once a
-    path contains dashes of its own (`~/Projects/timeshield-desktop-app`).
+    path contains dashes of its own (`~/Projects/some-desktop-app`).
     """
     found = {}
     if os.path.isdir(PROJECTS):
