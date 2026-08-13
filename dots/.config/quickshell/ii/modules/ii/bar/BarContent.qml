@@ -321,6 +321,17 @@ Item { // Bar content region
                 }
             }
 
+            StyledText { // The tray draws the matching one on its own far side
+                Layout.alignment: Qt.AlignVCenter
+                font.pixelSize: Appearance.font.pixelSize.larger
+                color: Appearance.colors.colSubtext
+                text: "•"
+            }
+
+            AudioOutputToggle {
+                Layout.alignment: Qt.AlignVCenter
+            }
+
             SysTray {
                 visible: root.useShortenedForm === 0
                 Layout.fillWidth: false
@@ -350,3 +361,4 @@ Item { // Bar content region
         }
     }
 }
+
