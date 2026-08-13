@@ -45,6 +45,18 @@ Singleton {
     readonly property list<var> outputDevices: root.devices(true)
     readonly property list<var> inputDevices: root.devices(false)
 
+    // Nothing in PipeWire reliably says "this one is headphones": form_factor is
+    // left unset by plain USB DACs and HDMI sinks alike, so when it's missing the
+    // name the device presents itself under is all there is to go on.
+    function isHeadphoneDevice(node) {
+        if (!node) return false;
+        const formFactor = node.properties?.["device.form_factor"] ?? "";
+        if (formFactor === "headphone" || formFactor === "headset") return true;
+        if (formFactor === "speaker") return false;
+        return /headphone|headset|earphone|earbud/i.test(`${node.nickname ?? ""} ${node.description ?? ""} ${node.name ?? ""}`);
+    }
+    readonly property bool usingHeadphones: root.isHeadphoneDevice(root.sink)
+
     // Signals
     signal sinkProtectionTriggered(string reason);
 
@@ -77,9 +89,30 @@ Singleton {
         Pipewire.preferredDefaultAudioSource = node;
     }
 
+    // For a one-button switcher: jump to the opposite kind of device when there
+    // is one, so a headphones/speakers pair toggles rather than cycling through
+    // itself. Falls back to plain next-in-list when everything is the same kind.
+    function cycleOutputDevice() {
+        const devices = root.outputDevices;
+        if (devices.length < 2) return;
+
+        const opposite = devices.find(node => root.isHeadphoneDevice(node) !== root.usingHeadphones);
+        if (opposite) {
+            root.setDefaultSink(opposite);
+            return;
+        }
+
+        const currentIndex = devices.findIndex(node => node.id === root.sink?.id);
+        root.setDefaultSink(devices[(currentIndex + 1) % devices.length]);
+    }
+
     // Internals
     PwObjectTracker {
         objects: [sink, source]
+    }
+
+    PwObjectTracker { // Untracked nodes carry no description to tell them apart by
+        objects: root.outputDevices
     }
 
     Connections { // Protection against sudden volume changes
