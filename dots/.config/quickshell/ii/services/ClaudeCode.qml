@@ -28,6 +28,10 @@ Singleton {
     readonly property bool enabled: options?.enable ?? true
 
     property string cliPath: ""
+    // An explicitly configured path is the user's business and is never
+    // overwritten by autodetection; a detected one is only a snapshot of where
+    // the CLI happened to live at startup, so it may be re-resolved later.
+    property bool cliPathConfigured: false
     readonly property string workingDirectory: {
         const configured = (options?.workingDirectory ?? "").trim();
         const path = configured.length > 0 ? configured : Directories.home;
@@ -798,6 +802,11 @@ Singleton {
             root.spawnEffort = root.selectedEffort;
             root.spawnResumeId = root.resumeSessionId;
             claudeProcess.running = true;
+            // A process that never starts emits no `exited`, so nothing below
+            // would ever clear `busy` and the turn would spin forever. Watch
+            // for the first sign of life instead.
+            root.spawnPending = true;
+            spawnWatchdog.restart();
             // The reply to this carries the slash command list.
             root.sendControlRequest("initialize", { hooks: ({}) });
         }
@@ -808,6 +817,55 @@ Singleton {
                 content: [{ type: "text", text: trimmed }]
             }
         }) + "\n");
+    }
+
+    // ------------------------------------------------------------------
+    // Spawn failures
+    // ------------------------------------------------------------------
+
+    // Qt reports a binary that cannot be started through `errorOccurred`, not
+    // `exited`, so `onExited` below never runs and the turn it belongs to is
+    // never failed. The usual cause is the detected CLI moving out from under
+    // us: the copy bundled with the VS Code extension lives in a versioned
+    // directory that disappears on every extension update.
+    property bool spawnPending: false
+
+    // Anything at all on stdout means the process is up and the turn is now the
+    // stream's problem, not the watchdog's.
+    function noteProcessAlive() {
+        if (!root.spawnPending) return;
+        root.spawnPending = false;
+        spawnWatchdog.stop();
+    }
+
+    function failSpawn() {
+        if (!root.spawnPending) return;
+        root.spawnPending = false;
+        // A slow starter that came up without saying anything yet is not a
+        // failure; leave it to the stream and to onExited.
+        if (claudeProcess.running) return;
+
+        const assistant = root.currentAssistant();
+        if (assistant) {
+            assistant.done = true;
+            assistant.isError = true;
+            if (assistant.content.length === 0) {
+                assistant.content = Translation.tr("Claude Code failed to start — nothing runnable at `%1`. Looking the CLI up again; send that message once more.").arg(root.cliPath);
+            }
+        }
+        root.busy = false;
+        root.currentAssistantId = "";
+        // These were stacking up invisibly behind a turn that was never going
+        // to finish; better to drop them than to replay them out of order.
+        root.queuedMessages = [];
+        root.refreshCliPath();
+    }
+
+    Timer {
+        id: spawnWatchdog
+        interval: 10000 // Generous: a cold start still prints within a second.
+        repeat: false
+        onTriggered: root.failSpawn()
     }
 
     function clearMessages() {
@@ -823,6 +881,8 @@ Singleton {
         root.queuedMessages = [];
         root.resumeSessionId = "";
         root.forgetSession();
+        root.spawnPending = false;
+        spawnWatchdog.stop();
         // Dropping the process drops the CLI-side conversation with it.
         claudeProcess.running = false;
     }
@@ -852,6 +912,8 @@ Singleton {
         // next message spawns a blank session and the conversation on screen is
         // one the agent has never seen.
         if (root.sessionId.length > 0) root.resumeSessionId = root.sessionId;
+        root.spawnPending = false;
+        spawnWatchdog.stop();
         claudeProcess.running = false;
         root.busy = false;
         root.queuedMessages = [];
@@ -1269,6 +1331,7 @@ Singleton {
 
         stdout: SplitParser {
             onRead: data => {
+                root.noteProcessAlive();
                 const line = data.trim();
                 if (line.length === 0) return;
                 let event;
@@ -1288,6 +1351,10 @@ Singleton {
         }
 
         onExited: (exitCode, exitStatus) => {
+            // It started, so whatever happens next is an exit, not a spawn
+            // failure.
+            root.spawnPending = false;
+            spawnWatchdog.stop();
             if (root.busy) {
                 const assistant = root.currentAssistant();
                 if (assistant) {
@@ -1328,6 +1395,16 @@ Singleton {
         }
     }
 
+    // The bundled path carries a version number, so it stops existing the
+    // moment the extension updates — which it does on its own schedule, mid
+    // session. Resolving once at startup is what leaves the sidebar pointing at
+    // a binary that is no longer there.
+    function refreshCliPath() {
+        if (root.cliPathConfigured) return;
+        findCliProcess.running = false;
+        findCliProcess.running = true;
+    }
+
     Process {
         id: findCliProcess
         running: true
@@ -1337,7 +1414,7 @@ Singleton {
         stdout: SplitParser {
             onRead: data => {
                 const path = data.trim();
-                if (path.length > 0 && root.cliPath.length === 0) {
+                if (path.length > 0 && !root.cliPathConfigured) {
                     root.cliPath = path;
                 }
             }
@@ -1360,7 +1437,10 @@ Singleton {
 
     Component.onCompleted: {
         const configured = (options?.cliPath ?? "").trim();
-        if (configured.length > 0) root.cliPath = configured;
+        if (configured.length > 0) {
+            root.cliPath = configured;
+            root.cliPathConfigured = true;
+        }
         root.selectedModel = options?.model ?? "";
         root.selectedEffort = options?.effort ?? "";
     }
