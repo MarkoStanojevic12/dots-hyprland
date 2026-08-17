@@ -352,6 +352,9 @@ Scope {
                 name: tool.name,
                 icon: root.manager.toolIcons[tool.name] ?? "build",
                 detail: root.manager.toolDetail(tool.name, tool.input),
+                // The chip expansions read from the input, so dropping it here
+                // would leave every diff in a loaded conversation unopenable.
+                input: tool.input ?? ({}),
                 // Anything in a finished transcript has already run.
                 status: "done"
             }));
@@ -1045,6 +1048,10 @@ Scope {
     // What is on screen is saved rather than the CLI's own transcript: the
     // transcript lags the stream by a beat, and a reload lands mid-turn, so
     // the transcript is missing precisely the reply that was interrupted.
+    // A whole-file Write can outweigh the rest of the state file put together;
+    // past this size the diff is not worth what every 2s checkpoint would pay.
+    readonly property int maxStoredInputChars: 65536
+
     function serialize() {
         // After an interrupt the live id is gone but the session is still
         // resumable, so fall back to the id the next spawn will resume from.
@@ -1068,16 +1075,25 @@ Scope {
                     isError: message.isError,
                     interrupted: message.interrupted,
                     thinkingTokens: message.thinkingTokens,
-                    // Inputs can carry whole file contents; the chip detail is
-                    // enough to redraw the history.
-                    toolCalls: message.toolCalls.map(call => ({
-                        id: call.id,
-                        name: call.name,
-                        icon: call.icon,
-                        detail: call.detail,
-                        status: call.status,
-                        contentOffset: call.contentOffset ?? 0
-                    }))
+                    // The expansions -- diffs, todo lists, command output --
+                    // read straight from the input, so a chip stored without
+                    // it can never open again. Only an outsized input is
+                    // dropped, and only that one chip comes back inert.
+                    toolCalls: message.toolCalls.map(call => {
+                        const entry = {
+                            id: call.id,
+                            name: call.name,
+                            icon: call.icon,
+                            detail: call.detail,
+                            status: call.status,
+                            contentOffset: call.contentOffset ?? 0
+                        };
+                        if (JSON.stringify(call.input ?? ({})).length <= root.maxStoredInputChars) {
+                            entry.input = call.input ?? ({});
+                        }
+                        if ((call.output ?? "").length > 0) entry.output = call.output;
+                        return entry;
+                    })
                 };
             })
         };

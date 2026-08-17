@@ -7,10 +7,9 @@ import QtQuick.Layouts
 /**
  * One conversation in the Claude tab strip.
  *
- * The chip is labelled with the working directory rather than the conversation
- * title: six of these have to fit across a sidebar column, and which project a
- * chat is on is what tells two of them apart at that width. The title goes in
- * the tooltip, where there is room for it.
+ * The chip is labelled with the conversation title, same as the history list;
+ * tabs on the same project would otherwise all read alike. The directory falls
+ * back in only while the conversation hasn't started, and stays in the tooltip.
  */
 RippleButton {
     id: root
@@ -24,12 +23,17 @@ RippleButton {
     readonly property bool unseen: root.session?.unseen ?? false
 
     readonly property string label: {
+        const title = (root.session?.conversationTitle ?? "").trim();
         const parts = (root.session?.workingDirectory ?? "").split("/").filter(part => part.length > 0);
-        return parts.length > 0 ? parts[parts.length - 1] : Translation.tr("Home");
+        const text = title.length > 0 ? title
+            : parts.length > 0 ? parts[parts.length - 1]
+            : Translation.tr("Home");
+        // Titles are first messages, and first messages start lowercase.
+        return text.charAt(0).toUpperCase() + text.slice(1);
     }
 
-    implicitHeight: 26
-    buttonRadius: Appearance.rounding.full
+    implicitHeight: 28
+    buttonRadius: Appearance.rounding.verysmall
     toggled: root.current
     // RippleButton leaves an untoggled button transparent, which puts an
     // inactive tab straight on the sidebar with nothing to mark its edges.
@@ -75,7 +79,8 @@ RippleButton {
         StyledText {
             Layout.fillWidth: true
             elide: Text.ElideRight
-            font.pixelSize: Appearance.font.pixelSize.smaller
+            font.pixelSize: Appearance.font.pixelSize.small
+            font.weight: root.current ? Font.Medium : Font.Normal
             color: root.current ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer2
             text: root.label
         }
