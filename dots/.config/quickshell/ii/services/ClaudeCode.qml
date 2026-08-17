@@ -949,7 +949,11 @@ Singleton {
             isError: isError ?? false,
             model: root.modelName
         });
-        root.messageByID[id] = message;
+        // Published as a fresh object rather than mutated in place: an in-place
+        // key write emits no change signal, so a view binding that looked the
+        // id up before it landed would stay undefined for the life of that
+        // delegate — an empty bubble with nothing but the speaker's name.
+        root.messageByID = Object.assign({}, root.messageByID, { [id]: message });
         root.messageIDs = [...root.messageIDs, id];
         root.messageAppended();
         return id;
