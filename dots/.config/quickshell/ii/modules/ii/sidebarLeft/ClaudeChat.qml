@@ -88,7 +88,7 @@ Item {
     function toggleDirectoryPicker() {
         root.directoryPickerShown = !root.directoryPickerShown;
         if (root.directoryPickerShown) {
-            ClaudeCode.directoryError = "";
+            ClaudeCode.clearDirectoryError();
             ClaudeCode.refreshDirectories();
             directoryInput.text = ClaudeCode.workingDirectory;
             directoryInput.forceActiveFocus();
@@ -103,6 +103,22 @@ Item {
         messageInputField.forceActiveFocus();
     }
 
+    // A second conversation alongside this one, rather than in place of it. It
+    // starts in the same directory, since opening a tab is usually splitting
+    // the work you are already doing rather than moving to another project.
+    function openTab() {
+        if (!ClaudeCode.canOpenTab) return;
+        ClaudeCode.newTab(ClaudeCode.workingDirectory);
+        root.historyShown = false;
+        root.usefulFeaturesShown = false;
+        messageInputField.forceActiveFocus();
+    }
+
+    function closeTab() {
+        ClaudeCode.closeTab(ClaudeCode.activeIndex);
+        messageInputField.forceActiveFocus();
+    }
+
     onFocusChanged: focus => {
         if (focus) root.inputField.forceActiveFocus();
     }
@@ -112,6 +128,28 @@ Item {
             root.startNewConversation();
             event.accepted = true;
             return;
+        }
+        // Ctrl+PageUp/PageDown already moves between the sidebar's own tabs, so
+        // conversations move on Ctrl+Tab instead.
+        if (event.modifiers & Qt.ControlModifier) {
+            if (event.key === Qt.Key_T) {
+                root.openTab();
+                event.accepted = true;
+                return;
+            }
+            if (event.key === Qt.Key_W) {
+                root.closeTab();
+                event.accepted = true;
+                return;
+            }
+            if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab) {
+                // Shift+Tab arrives as Backtab, and on some layouts with the
+                // shift modifier still set, so either one means backwards.
+                const backwards = event.key === Qt.Key_Backtab || (event.modifiers & Qt.ShiftModifier);
+                ClaudeCode.activateNextTab(backwards ? -1 : 1);
+                event.accepted = true;
+                return;
+            }
         }
         // Typing anywhere in the tab lands in the composer, but only real
         // typing. Anything a focused field left unhandled — a bare modifier, an
@@ -191,6 +229,29 @@ Item {
                 }
             }
 
+            RippleButton { // Another conversation alongside this one
+                id: newTabButton
+                implicitWidth: 32
+                implicitHeight: 32
+                buttonRadius: Appearance.rounding.small
+                enabled: ClaudeCode.canOpenTab
+                onClicked: root.openTab()
+
+                contentItem: MaterialSymbol {
+                    anchors.centerIn: parent
+                    horizontalAlignment: Text.AlignHCenter
+                    iconSize: Appearance.font.pixelSize.larger
+                    color: newTabButton.enabled ? Appearance.colors.colOnLayer1 : Appearance.colors.colOnLayer1Inactive
+                    text: "add"
+                }
+
+                StyledToolTip {
+                    text: ClaudeCode.canOpenTab
+                        ? Translation.tr("New chat tab (Ctrl+T)\nRuns beside this one, in the same directory")
+                        : Translation.tr("%1 chats at once is the limit — each one is a whole CLI").arg(ClaudeCode.maxTabs)
+                }
+            }
+
             RippleButton { // Start over
                 implicitWidth: 32
                 implicitHeight: 32
@@ -251,6 +312,17 @@ Item {
                 StyledToolTip {
                     text: Translation.tr("Useful features")
                 }
+            }
+        }
+
+        Revealer { // The other conversations, once there is more than one
+            vertical: true
+            // A single conversation keeps the vertical space it had before tabs
+            // existed; the header's + is what says a second one is possible.
+            reveal: ClaudeCode.tabs.length > 1
+
+            ChatTabStrip {
+                width: mainColumn.width
             }
         }
 
@@ -349,6 +421,9 @@ Item {
         Item { // Messages
             Layout.fillWidth: true
             Layout.fillHeight: true
+            // Sits on top of mainColumn's spacing, so the chat keeps the same
+            // distance from whatever is above it -- header or tab strip.
+            Layout.topMargin: 8
             layer.enabled: true
             layer.effect: OpacityMask {
                 maskSource: Rectangle {
@@ -720,7 +795,9 @@ Item {
                                 : Translation.tr("Ask Claude…  /  for commands")
 
                             Keys.onPressed: event => {
-                                if (event.key === Qt.Key_Tab && root.slashSuggestions.length > 0) {
+                                // Ctrl+Tab moves between conversations, so bare
+                                // Tab is the only one that completes a command.
+                                if (event.key === Qt.Key_Tab && event.modifiers === Qt.NoModifier && root.slashSuggestions.length > 0) {
                                     root.applySlashCommand(root.slashSuggestions[0]);
                                     event.accepted = true;
                                 } else if (event.key === Qt.Key_Enter || event.key === Qt.Key_Return) {

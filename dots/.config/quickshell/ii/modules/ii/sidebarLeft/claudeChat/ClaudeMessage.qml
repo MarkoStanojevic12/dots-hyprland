@@ -306,9 +306,10 @@ Item {
                 implicitHeight: 30
                 buttonRadius: Appearance.rounding.full
                 toggled: true
-                // Nothing can be sent mid-turn anyway, and a queued duplicate is
-                // the one outcome this button should never produce.
-                enabled: !ClaudeCode.busy
+                // Mid-turn a duplicate would only queue -- but `busy` with no
+                // process behind it is exactly the stuck state this button
+                // recovers from, so that combination has to stay clickable.
+                enabled: !ClaudeCode.busy || !ClaudeCode.processRunning
                 onClicked: ClaudeCode.continueInterrupted(root.messageData)
 
                 contentItem: StyledText {
