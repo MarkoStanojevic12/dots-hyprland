@@ -83,7 +83,11 @@ Item {
     // Dropped in by the user; without it the generic glyph simply stays.
     readonly property string avatarPath: `file://${Directories.shellConfig}/avatar.jpg`
 
-    implicitHeight: contentColumn.implicitHeight
+    // Everything below is written to degrade quietly when the message is
+    // missing, which would otherwise leave a bubble carrying a speaker's name
+    // and nothing else. Better to take up no room at all.
+    implicitHeight: root.messageData ? contentColumn.implicitHeight : 0
+    visible: !!root.messageData
     width: parent?.width ?? implicitWidth
 
     ColumnLayout {
