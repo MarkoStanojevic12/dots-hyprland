@@ -47,7 +47,12 @@ for ((i=0;i<${#ARGS[@]};i++)); do
 done
 
 if pgrep wf-recorder > /dev/null; then
-    notify-send "Recording Stopped" "Stopped" -a 'Recorder' &
+    # -A implies --wait, so this has to stay backgrounded until the user answers
+    (
+        if [[ "$(notify-send "Recording Stopped" "Stopped" -a 'Recorder' -A "open=Open folder")" == "open" ]]; then
+            dolphin "$RECORDING_DIR"
+        fi
+    ) & disown
     pkill wf-recorder &
 else
     if [[ $FULLSCREEN_FLAG -eq 1 ]]; then
