@@ -33,6 +33,14 @@ Scope {
         color: "transparent"
         implicitWidth: Appearance.sizes.notificationPopupWidth
 
+        // Input is masked to the notification stack, so this only fires over actual popups
+        HoverHandler {
+            id: popupHoverHandler
+        }
+
+        readonly property bool popupHovered: root.visible && popupHoverHandler.hovered
+        onPopupHoveredChanged: Notifications.popupHovered = root.popupHovered
+
         NotificationListView {
             id: listview
             anchors {

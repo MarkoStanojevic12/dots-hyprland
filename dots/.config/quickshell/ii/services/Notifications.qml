@@ -62,7 +62,7 @@ Singleton {
     component NotifTimer: Timer {
         required property int notificationId
         interval: 7000
-        running: true
+        running: !root.popupHovered
         onTriggered: () => {
             const index = root.list.findIndex((notif) => notif.notificationId === notificationId);
             const notifObject = root.list[index];
@@ -74,6 +74,7 @@ Singleton {
     }
 
     property bool silent: false
+    property bool popupHovered: false
     property int unread: 0
     property var filePath: Directories.notificationsPath
     property list<Notif> list: []
