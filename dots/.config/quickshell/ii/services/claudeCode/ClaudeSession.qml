@@ -93,6 +93,7 @@ Scope {
         root.rememberPreference("effort", alias);
         if (claudeProcess.running) {
             root.resumeSessionId = root.sessionId;
+            root.discardStream = true;
             claudeProcess.running = false;
         }
         root.manager.rememberTabs();
@@ -500,6 +501,7 @@ Scope {
         root.spawnPending = false;
         spawnWatchdog.stop();
         // Dropping the process drops the CLI-side conversation with it.
+        root.discardStream = true;
         claudeProcess.running = false;
         root.manager.rememberTabs();
     }
@@ -556,6 +558,12 @@ Scope {
             root.queuedMessages = [...root.queuedMessages, trimmed];
             return;
         }
+        // A process on its way out after an interrupt is a dead letterbox, and
+        // a new one can't spawn until it's gone; park this for onExited.
+        if (claudeProcess.running && root.discardStream) {
+            root.queuedMessages = [...root.queuedMessages, trimmed];
+            return;
+        }
         // Falling through with a bubble still open would leave it spinning
         // forever once currentAssistantId moves on below.
         const stale = root.currentAssistant();
@@ -568,6 +576,7 @@ Scope {
         root.currentAssistantId = root.addMessage("assistant", "");
 
         if (!claudeProcess.running) {
+            root.discardStream = false;
             root.spawnModel = root.selectedModel;
             root.spawnEffort = root.selectedEffort;
             root.spawnResumeId = root.resumeSessionId;
@@ -616,6 +625,7 @@ Scope {
         if (root.sessionId.length > 0) root.resumeSessionId = root.sessionId;
         root.spawnPending = false;
         spawnWatchdog.stop();
+        root.discardStream = true;
         claudeProcess.running = false;
         root.busy = false;
         root.queuedMessages = [];
@@ -641,6 +651,7 @@ Scope {
         spawnWatchdog.stop();
         checkpointTimer.stop();
         root.busy = false;
+        root.discardStream = true;
         claudeProcess.running = false;
     }
 
@@ -965,6 +976,11 @@ Scope {
     // The process
     // ------------------------------------------------------------------
 
+    // A killed process can take seconds to actually die, and until it does it
+    // keeps streaming. Everything after the decision to kill it is output
+    // nobody asked for -- rendering it makes the stop button look ignored.
+    property bool discardStream: false
+
     Process {
         id: claudeProcess
         running: false
@@ -993,6 +1009,7 @@ Scope {
 
         stdout: SplitParser {
             onRead: data => {
+                if (root.discardStream) return;
                 root.noteProcessAlive();
                 const line = data.trim();
                 if (line.length === 0) return;
@@ -1029,10 +1046,21 @@ Scope {
                 root.busy = false;
                 root.currentAssistantId = "";
             }
+            // Whatever ended this process, the transcript it leaves behind is
+            // resumable; claim it so the next spawn continues the conversation.
+            if (root.sessionId.length > 0) root.resumeSessionId = root.sessionId;
             root.sessionId = "";
             // A process that dies on its own is the other face of an expired
-            // session: it never gets far enough to report a failed turn.
-            if (exitCode !== 0) root.manager.checkAuth();
+            // session: it never gets far enough to report a failed turn. A
+            // deliberate kill exits nonzero too, and means nothing about auth.
+            if (exitCode !== 0 && !root.discardStream) root.manager.checkAuth();
+            root.discardStream = false;
+            // Anything parked while the old process was dying can spawn now.
+            if (!root.busy && root.queuedMessages.length > 0) {
+                const next = root.queuedMessages[0];
+                root.queuedMessages = root.queuedMessages.slice(1);
+                Qt.callLater(() => root.sendMessage(next));
+            }
         }
     }
 
