@@ -16,7 +16,8 @@ Rectangle {
     readonly property var input: root.toolCall?.input ?? null
     readonly property string toolName: root.toolCall?.name ?? ""
 
-    // Restored history keeps the chip but not the input, so nothing to open.
+    // An input can still be missing -- oversized ones are dropped from the
+    // checkpoint -- and a chip without one has nothing to open.
     readonly property bool expandable: root.isEdit || root.isWrite || root.isBash
     readonly property bool isEdit: root.toolName === "Edit" && (root.input?.old_string !== undefined)
     readonly property bool isWrite: root.toolName === "Write" && (root.input?.content !== undefined)

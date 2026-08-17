@@ -14,7 +14,7 @@ import QtQuick.Layouts
  */
 Item {
     id: root
-    implicitHeight: 26
+    implicitHeight: 28
 
     RowLayout {
         anchors.fill: parent
