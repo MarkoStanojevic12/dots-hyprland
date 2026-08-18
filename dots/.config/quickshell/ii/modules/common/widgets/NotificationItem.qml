@@ -277,11 +277,43 @@ Item { // Notification item area
                                 NotificationActionButton {
                                     id: notifAction
                                     required property var modelData
+                                    // Falls back to the label when no icon says it as clearly
+                                    readonly property string actionSymbol: NotificationUtils.findActionMaterialSymbol(modelData.text)
                                     Layout.fillWidth: true
                                     buttonText: modelData.text
                                     urgency: notificationObject.urgency
                                     onClicked: {
                                         Notifications.attemptInvokeAction(notificationObject.notificationId, modelData.identifier);
+                                    }
+
+                                    contentItem: Loader {
+                                        sourceComponent: notifAction.actionSymbol.length > 0 ? actionSymbolComponent : actionTextComponent
+
+                                        Component {
+                                            id: actionSymbolComponent
+                                            MaterialSymbol {
+                                                iconSize: Appearance.font.pixelSize.larger
+                                                horizontalAlignment: Text.AlignHCenter
+                                                color: (root.notificationObject.urgency == NotificationUrgency.Critical) ? 
+                                                    Appearance.m3colors.m3onSurfaceVariant : Appearance.m3colors.m3onSurface
+                                                text: notifAction.actionSymbol
+                                            }
+                                        }
+
+                                        Component {
+                                            id: actionTextComponent
+                                            StyledText {
+                                                horizontalAlignment: Text.AlignHCenter
+                                                color: (root.notificationObject.urgency == NotificationUrgency.Critical) ? 
+                                                    Appearance.m3colors.m3onSurfaceVariant : Appearance.m3colors.m3onSurface
+                                                text: notifAction.buttonText
+                                            }
+                                        }
+                                    }
+
+                                    StyledToolTip {
+                                        extraVisibleCondition: notifAction.actionSymbol.length > 0
+                                        text: notifAction.buttonText
                                     }
                                 }
                             }

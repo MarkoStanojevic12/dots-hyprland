@@ -86,6 +86,43 @@ Singleton {
     }
 
     /**
+     * Material symbol for a notification action button, or "" when the action's
+     * own label should be shown instead. Longest/most specific keywords first,
+     * so "Open folder" picks the folder icon rather than the generic open one.
+     * @param { string } actionText
+     * @returns { string }
+     */
+    function findActionMaterialSymbol(actionText = "") {
+        if (actionText.length === 0) return "";
+
+        const keywordsToTypes = {
+            'folder': 'folder_open',
+            'directory': 'folder_open',
+            'reply': 'reply',
+            'copy': 'content_copy',
+            'download': 'download',
+            'snooze': 'snooze',
+            'dismiss': 'close',
+            'cancel': 'close',
+            'retry': 'refresh',
+            'again': 'refresh',
+            'undo': 'undo',
+            'settings': 'settings',
+            'open': 'open_in_new',
+            'show': 'open_in_new',
+            'view': 'open_in_new',
+        };
+
+        const lowerText = actionText.toLowerCase();
+
+        for (const [keyword, symbol] of Object.entries(keywordsToTypes)) {
+            if (lowerText.includes(keyword)) return symbol;
+        }
+
+        return "";
+    }
+
+    /**
      * Puts a notification body on the clipboard.
      * When the body is just a path to an existing file (e.g. the recording a
      * finished screen capture wrote), the file itself is copied as a clipboard
