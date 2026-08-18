@@ -17,6 +17,7 @@ Item { // Notification item area
     property real fontSize: Appearance.font.pixelSize.small
     property real padding: onlyNotification ? 0 : 8
     property real summaryElideRatio: 0.85
+    readonly property bool canCopy: (notificationObject?.body ?? "").trim().length > 0
 
     property real dragConfirmThreshold: 70 // Drag further to discard notification
     property real dismissOvershoot: notificationIcon.implicitWidth + 20 // Account for gaps and bouncy animations
@@ -252,8 +253,10 @@ Item { // Notification item area
                                 Layout.fillWidth: true
                                 buttonText: Translation.tr("Close")
                                 urgency: notificationObject.urgency
-                                implicitWidth: (notificationObject.actions.length == 0) ? ((actionsFlickable.width - actionRowLayout.spacing) / 2) : 
-                                    (contentItem.implicitWidth + leftPadding + rightPadding)
+                                implicitWidth: (notificationObject.actions.length > 0) ?
+                                    (contentItem.implicitWidth + leftPadding + rightPadding) :
+                                    root.canCopy ? ((actionsFlickable.width - actionRowLayout.spacing) / 2) :
+                                    actionsFlickable.width
 
                                 onClicked: {
                                     root.destroyWithAnimation()
@@ -283,14 +286,15 @@ Item { // Notification item area
                                 }
                             }
 
-                            NotificationActionButton {
+                            NotificationActionButton { // Copy
+                                visible: root.canCopy
                                 Layout.fillWidth: true
                                 urgency: notificationObject.urgency
                                 implicitWidth: (notificationObject.actions.length == 0) ? ((actionsFlickable.width - actionRowLayout.spacing) / 2) : 
                                     (contentItem.implicitWidth + leftPadding + rightPadding)
 
                                 onClicked: {
-                                    Quickshell.clipboardText = notificationObject.body
+                                    NotificationUtils.copyBody(notificationObject.body)
                                     copyIcon.text = "inventory"
                                     copyIconTimer.restart()
                                 }

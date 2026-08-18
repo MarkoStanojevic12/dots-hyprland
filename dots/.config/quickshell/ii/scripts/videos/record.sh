@@ -13,6 +13,10 @@ else
     RECORDING_DIR="$HOME/Videos" # Use default path
 fi
 
+# Remembers what the currently running wf-recorder is writing to, so the stop
+# invocation (a separate process) can name the file it just produced.
+STATE_FILE="${XDG_RUNTIME_DIR:-/tmp}/quickshell-recording-path"
+
 getdate() {
     date '+%Y-%m-%d_%H.%M.%S'
 }
@@ -47,21 +51,24 @@ for ((i=0;i<${#ARGS[@]};i++)); do
 done
 
 if pgrep wf-recorder > /dev/null; then
+    RECORDED_FILE=""
+    [[ -r "$STATE_FILE" ]] && RECORDED_FILE="$(cat "$STATE_FILE")"
+
+    # Stop first so the container is finalized before anyone opens or copies it
+    pkill wf-recorder
+    rm -f "$STATE_FILE"
+
+    # The body is the file path on purpose: the shell's copy button turns a body
+    # that points at an existing file into a clipboard file reference.
     # -A implies --wait, so this has to stay backgrounded until the user answers
     (
-        if [[ "$(notify-send "Recording Stopped" "Stopped" -a 'Recorder' -A "open=Open folder")" == "open" ]]; then
+        if [[ "$(notify-send "Recording Stopped" "${RECORDED_FILE:-Stopped}" -a 'Recorder' -A "open=Open folder")" == "open" ]]; then
             dolphin "$RECORDING_DIR"
         fi
     ) & disown
-    pkill wf-recorder &
 else
     if [[ $FULLSCREEN_FLAG -eq 1 ]]; then
-        notify-send "Starting recording" 'recording_'"$(getdate)"'.mp4' -a 'Recorder' & disown
-        if [[ $SOUND_FLAG -eq 1 ]]; then
-            wf-recorder -o "$(getactivemonitor)" --pixel-format yuv420p -f './recording_'"$(getdate)"'.mp4' -t --audio="$(getaudiooutput)"
-        else
-            wf-recorder -o "$(getactivemonitor)" --pixel-format yuv420p -f './recording_'"$(getdate)"'.mp4' -t
-        fi
+        AREA_ARGS=(-o "$(getactivemonitor)")
     else
         # If a manual region was provided via --region, use it; otherwise run slurp as before.
         if [[ -n "$MANUAL_REGION" ]]; then
@@ -72,12 +79,19 @@ else
                 exit 1
             fi
         fi
+        AREA_ARGS=(--geometry "$region")
+    fi
 
-        notify-send "Starting recording" 'recording_'"$(getdate)"'.mp4' -a 'Recorder' & disown
-        if [[ $SOUND_FLAG -eq 1 ]]; then
-            wf-recorder --pixel-format yuv420p -f './recording_'"$(getdate)"'.mp4' -t --geometry "$region" --audio="$(getaudiooutput)"
-        else
-            wf-recorder --pixel-format yuv420p -f './recording_'"$(getdate)"'.mp4' -t --geometry "$region"
-        fi
+    FILENAME="recording_$(getdate).mp4"
+    printf '%s' "$RECORDING_DIR/$FILENAME" > "$STATE_FILE"
+
+    # No body: there is nothing to copy yet, and an empty body is what makes the
+    # shell drop the copy button. The path shows up in the stop notification.
+    notify-send "Starting recording" -a 'Recorder' & disown
+
+    if [[ $SOUND_FLAG -eq 1 ]]; then
+        wf-recorder "${AREA_ARGS[@]}" --pixel-format yuv420p -f "./$FILENAME" -t --audio="$(getaudiooutput)"
+    else
+        wf-recorder "${AREA_ARGS[@]}" --pixel-format yuv420p -f "./$FILENAME" -t
     fi
 fi

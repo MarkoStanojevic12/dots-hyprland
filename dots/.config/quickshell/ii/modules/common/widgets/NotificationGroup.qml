@@ -16,7 +16,7 @@ MouseArea { // Notification group area
     property var notifications: notificationGroup?.notifications ?? []
     property int notificationCount: notifications.length
     property bool multipleNotifications: notificationCount > 1
-    property bool expanded: false
+    property bool expanded: Config.options.notifications.expandByDefault
     property bool popup: false
     property real padding: 10
     implicitHeight: background.implicitHeight

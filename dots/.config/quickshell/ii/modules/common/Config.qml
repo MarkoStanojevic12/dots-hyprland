@@ -467,6 +467,7 @@ Singleton {
 
             property JsonObject notifications: JsonObject {
                 property int timeout: 7000
+                property bool expandByDefault: true // Show body, image and action buttons without having to expand the group first
                 property JsonObject monitor: JsonObject {
                     property bool enable: false
                     property string name: "" // Name of the monitor to show notifications on, like "eDP-1". Find out with 'hyprctl monitors' command

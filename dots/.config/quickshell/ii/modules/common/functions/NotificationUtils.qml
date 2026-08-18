@@ -85,6 +85,33 @@ Singleton {
         return Qt.formatDateTime(messageTime, "MMMM dd");
     }
 
+    /**
+     * Puts a notification body on the clipboard.
+     * When the body is just a path to an existing file (e.g. the recording a
+     * finished screen capture wrote), the file itself is copied as a clipboard
+     * file reference instead of its path as text, so it can be pasted into
+     * file managers, chat apps and the like.
+     * @param { string } body
+     */
+    function copyBody(body) {
+        const trimmed = (body ?? "").trim();
+        const path = trimmed.startsWith("file://") ? decodeURIComponent(trimmed.slice("file://".length)) : trimmed;
+
+        // Anything that can't be a single absolute path is plain text
+        if (!path.startsWith("/") || path.includes("\n")) {
+            Quickshell.clipboardText = body;
+            return;
+        }
+
+        // Whether the file exists can only be decided at click time, so the
+        // fallback to plain text lives in the script. Positional args keep the
+        // values out of the script text, so nothing needs escaping.
+        const uri = "file://" + encodeURI(path).replace(/#/g, "%23").replace(/\?/g, "%3F");
+        Quickshell.execDetached(["bash", "-c",
+            'if [ -f "$1" ]; then printf "%s\\r\\n" "$2" | wl-copy -t text/uri-list; else printf "%s" "$3" | wl-copy; fi',
+            "notification-copy", path, uri, body ?? ""]);
+    }
+
     function processNotificationBody(body, appName) {
         let processedBody = body
         
