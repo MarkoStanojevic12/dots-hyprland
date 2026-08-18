@@ -267,6 +267,18 @@ ContentPage {
         }
 
         ConfigSwitch {
+            buttonIcon: "unfold_more"
+            text: Translation.tr("Expand notifications by default")
+            checked: Config.options.notifications.expandByDefault
+            onCheckedChanged: {
+                Config.options.notifications.expandByDefault = checked;
+            }
+            StyledToolTip {
+                text: Translation.tr("Show the full body, image and action buttons right away instead of only after expanding the group")
+            }
+        }
+
+        ConfigSwitch {
             buttonIcon: "monitor"
             text: Translation.tr("Force specific monitor")
             checked: Config.options.notifications.forceMonitor.enable
