@@ -24,6 +24,9 @@ ColumnLayout {
     // Optional overrides. Left unset, links open in the system handler and
     // keep whatever colour the style gives them.
     property var linkHandler: null
+    // Ctrl+click on a link. onLinkActivated carries no modifier state, so it is detected on the
+    // press below and routed here instead.
+    property var linkAltHandler: null
     property color linkColor: "transparent"
 
     // Inline `code` gets a filled background so short identifiers stand out
@@ -219,6 +222,22 @@ ColumnLayout {
                 hoverEnabled: true
                 cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : 
                     (enableMouseSelection || editing) ? Qt.IBeamCursor : Qt.ArrowCursor
+            }
+
+            MouseArea { // Ctrl+click on a link, without disturbing anything else
+                anchors.fill: parent
+                acceptedButtons: Qt.LeftButton
+                // Declining the press hands it straight back to the TextArea, so plain clicks,
+                // text selection and normal link activation all behave exactly as before.
+                onPressed: mouse => {
+                    const onLink = textArea.hoveredLink !== "";
+                    const ctrl = (mouse.modifiers & Qt.ControlModifier) !== 0;
+                    if (!onLink || !ctrl || !root.linkAltHandler) {
+                        mouse.accepted = false;
+                        return;
+                    }
+                    root.linkAltHandler(textArea.hoveredLink);
+                }
             }
 
             // Rectangle {

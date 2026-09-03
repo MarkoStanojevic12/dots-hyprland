@@ -126,6 +126,7 @@ Singleton {
     readonly property var pendingPermission: root.active?.pendingPermission ?? null
     readonly property var pendingQuestion: root.active?.pendingQuestion ?? null
     readonly property var queuedMessages: root.active?.queuedMessages ?? []
+    readonly property var backgroundTasks: root.active?.backgroundTasks ?? []
     readonly property var sessions: root.active?.sessions ?? []
     readonly property bool sessionsLoading: root.active?.sessionsLoading ?? false
     readonly property string resumeSessionId: root.active?.resumeSessionId ?? ""
@@ -514,6 +515,9 @@ Singleton {
     // word processor or a browser — so it is only used when no editor turns up.
     property string editorPath: ""
 
+    // Dolphin is the one that gets --select; the fallback below just opens the folder.
+    property string fileManagerPath: ""
+
     // Editors disagree on how to say "this file, at this line", so the command
     // shape follows whichever one was found.
     function editorCommand(path, line) {
@@ -537,6 +541,40 @@ Singleton {
             Quickshell.execDetached(root.editorCommand(path, line));
         } else {
             Qt.openUrlExternally(`file://${encodeURI(path)}`);
+        }
+    }
+
+    // Ctrl+click on a file link: show it in the file manager instead of opening it. Dolphin's
+    // --select highlights the file inside its folder, which is more useful than just opening the
+    // folder; if it is not installed, fall back to handing the folder to the desktop's default.
+    function revealFileReference(link) {
+        const url = String(link);
+        if (!url.startsWith("file://")) {
+            Qt.openUrlExternally(url);
+            return;
+        }
+        const hash = url.indexOf("#L");
+        const path = decodeURI(url.slice("file://".length, hash >= 0 ? hash : undefined));
+        if (root.fileManagerPath.length > 0) {
+            Quickshell.execDetached([root.fileManagerPath, "--select", path]);
+            return;
+        }
+        const slash = path.lastIndexOf("/");
+        const dir = slash > 0 ? path.slice(0, slash) : "/";
+        Qt.openUrlExternally(`file://${encodeURI(dir)}`);
+    }
+
+    Process {
+        id: findFileManagerProcess
+        running: true
+        command: ["bash", "-c", "command -v dolphin || true"]
+        stdout: SplitParser {
+            onRead: data => {
+                const path = data.trim();
+                if (path.length > 0 && root.fileManagerPath.length === 0) {
+                    root.fileManagerPath = path;
+                }
+            }
         }
     }
 
