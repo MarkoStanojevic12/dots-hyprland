@@ -273,6 +273,11 @@ Item {
                             ClaudeCode.openFileReference(link);
                             GlobalStates.sidebarLeftOpen = false;
                         }
+                        // Ctrl+click reveals the file in the file manager rather than opening it.
+                        linkAltHandler: link => {
+                            ClaudeCode.revealFileReference(link);
+                            GlobalStates.sidebarLeftOpen = false;
+                        }
                         messageData: root.messageData
                         done: root.messageData?.done ?? false
                         forceDisableChunkSplitting: root.messageData?.content.includes("```") ?? true
