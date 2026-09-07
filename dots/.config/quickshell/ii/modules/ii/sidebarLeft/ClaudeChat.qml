@@ -162,7 +162,7 @@ Item {
 
     function send() {
         const text = messageInputField.text;
-        if (text.trim().length === 0) return;
+        if (text.trim().length === 0 && ClaudeCode.pendingAttachments.length === 0) return;
         messageInputField.clear();
         ClaudeCode.sendMessage(text);
         messageListView.positionViewAtEnd();
@@ -559,12 +559,18 @@ Item {
                                 color: Appearance.colors.colSubtext
                                 text: "schedule_send"
                             }
+                            MaterialSymbol {
+                                visible: (queuedItem.modelData.attachments ?? []).length > 0
+                                iconSize: Appearance.font.pixelSize.normal
+                                color: Appearance.colors.colSubtext
+                                text: "image"
+                            }
                             StyledText {
                                 Layout.fillWidth: true
                                 elide: Text.ElideRight
                                 font.pixelSize: Appearance.font.pixelSize.smaller
                                 color: Appearance.colors.colSubtext
-                                text: queuedItem.modelData
+                                text: queuedItem.modelData.text
                             }
                             RippleButton {
                                 implicitWidth: 22
@@ -769,6 +775,26 @@ Item {
                     }
                 }
 
+                Flow { // Images pasted into this message, not sent yet
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: ClaudeCode.pendingAttachments.length > 0 ? 4 : 0
+                    spacing: 4
+
+                    Repeater {
+                        model: ScriptModel {
+                            values: ClaudeCode.pendingAttachments
+                        }
+
+                        delegate: AttachmentThumbnail {
+                            required property var modelData
+                            required property int index
+                            path: modelData.path
+                            canRemove: true
+                            onRemove: ClaudeCode.detachAttachment(index)
+                        }
+                    }
+                }
+
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 0
@@ -811,6 +837,18 @@ Item {
                                         root.send();
                                     }
                                     event.accepted = true;
+                                } else if (event.key === Qt.Key_V && (event.modifiers & Qt.ControlModifier)) {
+                                    // Whether the clipboard holds an image is
+                                    // only known once wl-paste has answered, so
+                                    // the paste is taken over entirely and the
+                                    // text case is put back from there.
+                                    // Ctrl+Shift+V stays Qt's own plain paste.
+                                    if (event.modifiers & Qt.ShiftModifier) messageInputField.paste();
+                                    else ClaudeCode.pasteInto(messageInputField);
+                                    event.accepted = true;
+                                } else if (event.key === Qt.Key_Escape && ClaudeCode.pendingAttachments.length > 0 && !ClaudeCode.busy) {
+                                    ClaudeCode.clearAttachments();
+                                    event.accepted = true;
                                 } else if (event.key === Qt.Key_Escape && ClaudeCode.busy) {
                                     ClaudeCode.interrupt();
                                     event.accepted = true;
@@ -826,6 +864,7 @@ Item {
                         implicitHeight: 40
                         buttonRadius: Appearance.rounding.small
                         readonly property bool hasText: messageInputField.text.trim().length > 0
+                            || ClaudeCode.pendingAttachments.length > 0
                         enabled: ClaudeCode.busy || (sendButton.hasText && ClaudeCode.available)
                         toggled: enabled
 
@@ -993,6 +1032,83 @@ Item {
                         font.pixelSize: Appearance.font.pixelSize.smallest
                         color: Appearance.m3colors.m3error
                         text: Translation.tr("limit resets in %1").arg(ClaudeCode.rateLimitResetText)
+                    }
+
+                    Row { // A turn in flight. The bubble has its own spinner, but
+                          // that one is off-screen the moment you scroll up.
+                        id: busyIndicator
+                        property bool hovered: busyHover.hovered
+                        visible: ClaudeCode.busy
+                        spacing: 3
+
+                        MaterialSymbol {
+                            anchors.verticalCenter: parent.verticalCenter
+                            iconSize: Appearance.font.pixelSize.normal
+                            color: Appearance.colors.colPrimary
+                            text: "progress_activity"
+
+                            RotationAnimation on rotation {
+                                running: busyIndicator.visible
+                                loops: Animation.Infinite
+                                from: 0
+                                to: 360
+                                duration: 1600
+                            }
+                        }
+
+                        HoverHandler {
+                            id: busyHover
+                        }
+
+                        StyledToolTip {
+                            text: Translation.tr("Claude is working — Esc to stop")
+                        }
+                    }
+
+                    Row { // Work still running in the background
+                        id: backgroundIndicator
+                        property bool hovered: backgroundHover.hovered
+                        readonly property int count: ClaudeCode.backgroundTasks.length
+                        visible: backgroundIndicator.count > 0
+                        spacing: 3
+
+                        MaterialSymbol {
+                            anchors.verticalCenter: parent.verticalCenter
+                            iconSize: Appearance.font.pixelSize.normal
+                            color: Appearance.colors.colPrimary
+                            text: "monitoring"
+
+                            SequentialAnimation on opacity {
+                                running: backgroundIndicator.visible
+                                loops: Animation.Infinite
+                                alwaysRunToEnd: true
+                                NumberAnimation { to: 0.35; duration: 800; easing.type: Easing.InOutQuad }
+                                NumberAnimation { to: 1; duration: 800; easing.type: Easing.InOutQuad }
+                            }
+                        }
+
+                        StyledText {
+                            anchors.verticalCenter: parent.verticalCenter
+                            font.pixelSize: Appearance.font.pixelSize.smallest
+                            color: Appearance.colors.colSubtext
+                            text: backgroundIndicator.count
+                        }
+
+                        HoverHandler {
+                            id: backgroundHover
+                        }
+
+                        StyledToolTip {
+                            text: {
+                                const running = ClaudeCode.backgroundTasks
+                                    .map(task => `• ${task.description}`)
+                                    .join("\n");
+                                const heading = backgroundIndicator.count === 1
+                                    ? Translation.tr("1 background task running")
+                                    : Translation.tr("%1 background tasks running").arg(backgroundIndicator.count);
+                                return running.length > 0 ? `${heading}\n${running}` : heading;
+                            }
+                        }
                     }
 
                     Item { // Context window usage

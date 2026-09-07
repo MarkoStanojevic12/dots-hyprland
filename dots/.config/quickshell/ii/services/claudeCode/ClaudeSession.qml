@@ -496,6 +496,7 @@ Scope {
         root.pendingPermission = null;
         root.pendingQuestion = null;
         root.queuedMessages = [];
+        root.backgroundTasks = [];
         root.resumeSessionId = "";
         root.unseen = false;
         root.spawnPending = false;
@@ -543,9 +544,12 @@ Scope {
         return "";
     }
 
-    function sendMessage(text) {
+    // `attachments` is [{ path, mediaType, data }] with data already base64,
+    // as prepared by ClaudeCode.pasteInto.
+    function sendMessage(text, attachments) {
         const trimmed = text.trim();
-        if (trimmed.length === 0) return;
+        const images = attachments ?? [];
+        if (trimmed.length === 0 && images.length === 0) return;
         if (!root.manager.available) {
             root.addMessage("interface", Translation.tr("Claude Code CLI not found. Set sidebar.claude.cliPath in the config."), true);
             return;
@@ -555,13 +559,13 @@ Scope {
         // silently, which is what a stuck `busy` after a reload did to the
         // offer to continue an interrupted turn.
         if (root.busy && (claudeProcess.running || root.spawnPending)) {
-            root.queuedMessages = [...root.queuedMessages, trimmed];
+            root.queuedMessages = [...root.queuedMessages, { text: trimmed, attachments: images }];
             return;
         }
         // A process on its way out after an interrupt is a dead letterbox, and
         // a new one can't spawn until it's gone; park this for onExited.
         if (claudeProcess.running && root.discardStream) {
-            root.queuedMessages = [...root.queuedMessages, trimmed];
+            root.queuedMessages = [...root.queuedMessages, { text: trimmed, attachments: images }];
             return;
         }
         // Falling through with a bubble still open would leave it spinning
@@ -569,7 +573,12 @@ Scope {
         const stale = root.currentAssistant();
         if (stale && !stale.done) stale.done = true;
 
-        root.addMessage("user", trimmed);
+        // addMessage republishes messageByID, so the id has to be in hand
+        // before the map is read — indexing it in one expression reads the map
+        // as it was before the message was added.
+        const userMessageId = root.addMessage("user", trimmed);
+        const userMessage = root.messageByID[userMessageId];
+        if (userMessage) userMessage.attachments = images.map(image => image.path);
         root.busy = true;
         // The assistant bubble is created up front so the spinner has somewhere
         // to live while we wait for the first token.
@@ -589,11 +598,20 @@ Scope {
             // The reply to this carries the slash command list.
             root.sendControlRequest("initialize", { hooks: ({}) });
         }
+        // Images lead: the model reads the text as being about what it has
+        // already seen, which is what pasting a screenshot above a question
+        // means.
+        const content = images.map(image => ({
+            type: "image",
+            source: { type: "base64", media_type: image.mediaType, data: image.data }
+        }));
+        if (trimmed.length > 0) content.push({ type: "text", text: trimmed });
+
         claudeProcess.write(JSON.stringify({
             type: "user",
             message: {
                 role: "user",
-                content: [{ type: "text", text: trimmed }]
+                content: content
             }
         }) + "\n");
     }
@@ -713,6 +731,27 @@ Scope {
     }
 
     // ------------------------------------------------------------------
+    // Background tasks
+    // ------------------------------------------------------------------
+
+    // Work the CLI keeps running after the turn that launched it has ended --
+    // a backgrounded command watching a CI run, a subagent. Nothing else in
+    // the UI says the conversation is still waiting on something once `busy`
+    // has gone false.
+    //
+    // The CLI reports the whole current list on every launch and completion,
+    // so this mirrors it verbatim rather than inferring anything from tool
+    // calls. [{ taskId, description }]
+    property var backgroundTasks: []
+
+    function updateBackgroundTasks(tasks) {
+        root.backgroundTasks = (tasks ?? []).map(task => ({
+            taskId: task.task_id ?? "",
+            description: task.description ?? ""
+        }));
+    }
+
+    // ------------------------------------------------------------------
     // Tool call rendering
     // ------------------------------------------------------------------
 
@@ -791,6 +830,8 @@ Scope {
                 root.sessionId = event.session_id ?? root.sessionId;
                 root.modelName = event.model ?? root.modelName;
                 root.manager.rememberTabs();
+            } else if (event.subtype === "background_tasks_changed") {
+                root.updateBackgroundTasks(event.tasks);
             }
             break;
 
@@ -968,7 +1009,7 @@ Scope {
         if (root.queuedMessages.length > 0) {
             const next = root.queuedMessages[0];
             root.queuedMessages = root.queuedMessages.slice(1);
-            Qt.callLater(() => root.sendMessage(next));
+            Qt.callLater(() => root.sendMessage(next.text, next.attachments));
         }
     }
 
@@ -1046,6 +1087,8 @@ Scope {
                 root.busy = false;
                 root.currentAssistantId = "";
             }
+            // Background tasks are children of the process that just died.
+            root.backgroundTasks = [];
             // Whatever ended this process, the transcript it leaves behind is
             // resumable; claim it so the next spawn continues the conversation.
             if (root.sessionId.length > 0) root.resumeSessionId = root.sessionId;
@@ -1059,7 +1102,7 @@ Scope {
             if (!root.busy && root.queuedMessages.length > 0) {
                 const next = root.queuedMessages[0];
                 root.queuedMessages = root.queuedMessages.slice(1);
-                Qt.callLater(() => root.sendMessage(next));
+                Qt.callLater(() => root.sendMessage(next.text, next.attachments));
             }
         }
     }
@@ -1098,6 +1141,7 @@ Scope {
                 return {
                     role: message.role,
                     content: message.content,
+                    attachments: message.attachments ?? [],
                     model: message.model,
                     done: message.done,
                     isError: message.isError,
@@ -1161,6 +1205,7 @@ Scope {
             const message = root.messageByID[messageId];
             if (!message) continue;
             message.model = item.model ?? "";
+            message.attachments = item.attachments ?? [];
             message.thinkingTokens = item.thinkingTokens ?? 0;
             message.toolCalls = (item.toolCalls ?? []).map(call =>
                 call.status === "running" ? Object.assign({}, call, { status: "done" }) : call);

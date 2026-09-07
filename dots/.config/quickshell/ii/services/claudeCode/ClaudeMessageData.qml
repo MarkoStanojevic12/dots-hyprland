@@ -20,6 +20,9 @@ QtObject {
     // A name of "__thought" marks a thinking pause rather than a real tool.
     property var toolCalls: []
 
+    // Local paths of the images pasted into the composer with this message.
+    property var attachments: []
+
     // The thinking text never reaches the client, only an estimate of its size.
     property int thinkingTokens: 0
 

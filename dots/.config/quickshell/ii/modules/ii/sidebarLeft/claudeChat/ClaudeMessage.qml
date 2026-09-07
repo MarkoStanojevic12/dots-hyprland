@@ -169,6 +169,26 @@ Item {
             }
         }
 
+        Flow { // Images pasted along with the message
+            Layout.fillWidth: true
+            Layout.leftMargin: 4
+            Layout.rightMargin: 4
+            spacing: 4
+            visible: (root.messageData?.attachments ?? []).length > 0
+
+            Repeater {
+                model: ScriptModel {
+                    values: root.messageData?.attachments ?? []
+                }
+
+                delegate: AttachmentThumbnail {
+                    required property var modelData
+                    path: modelData
+                    size: 96
+                }
+            }
+        }
+
         Repeater { // The turn as it happened: prose, tool calls and thinking
             model: ScriptModel {
                 values: root.timeline
