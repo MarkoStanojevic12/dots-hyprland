@@ -145,7 +145,12 @@ Singleton {
         }
     }
 
-    function sendMessage(text) { root.requireTab()?.sendMessage(text); }
+    function sendMessage(text) {
+        const tab = root.requireTab();
+        if (!tab) return;
+        tab.sendMessage(text, root.pendingAttachments);
+        root.pendingAttachments = [];
+    }
     function interrupt() { root.active?.interrupt(); }
     function clearMessages() { root.requireTab()?.clearMessages(); }
     function setModel(alias) { root.requireTab()?.setModel(alias); }
@@ -160,6 +165,67 @@ Singleton {
     function answerPermission(behavior, remember) { root.active?.answerPermission(behavior, remember); }
     function answerQuestion(answers, picks) { root.active?.answerQuestion(answers, picks); }
     function dismissQuestion() { root.active?.dismissQuestion(); }
+
+    // ------------------------------------------------------------------
+    // Images pasted into the composer
+    // ------------------------------------------------------------------
+
+    // What the next message carries besides its text: [{ path, mediaType, data }],
+    // data already base64 so sending is a string build rather than another trip
+    // to disk. Held here rather than per tab because the composer is one field
+    // shared by all of them, the same as the text being typed into it.
+    property var pendingAttachments: []
+
+    readonly property string clipboardScript: Quickshell.shellPath("scripts/claude/clipboard-paste.sh")
+
+    function detachAttachment(index) {
+        root.pendingAttachments = root.pendingAttachments.filter((_, i) => i !== index);
+    }
+
+    function clearAttachments() {
+        root.pendingAttachments = [];
+    }
+
+    // Ctrl+V: an image on the clipboard becomes an attachment, anything else is
+    // an ordinary text paste. Which one it is is only known once wl-paste has
+    // answered, so the field comes along and is written to from there.
+    function pasteInto(field) {
+        if (pasteProcess.running) return;
+        pasteProcess.field = field;
+        pasteProcess.running = true;
+    }
+
+    Process {
+        id: pasteProcess
+        property var field: null
+        command: ["bash", root.clipboardScript, Directories.claudeAttachments]
+
+        stdout: StdioCollector {
+            id: pasteCollector
+            onStreamFinished: {
+                const output = pasteCollector.text;
+                const split = output.indexOf("\n");
+                const header = (split === -1 ? output : output.slice(0, split)).split(" ");
+                const body = split === -1 ? "" : output.slice(split + 1);
+
+                if (header[0] === "image" && body.length > 0) {
+                    root.pendingAttachments = [...root.pendingAttachments, {
+                        path: header.slice(2).join(" "),
+                        mediaType: header[1],
+                        data: body.trim()
+                    }];
+                    return;
+                }
+
+                const target = pasteProcess.field;
+                if (!target || body.length === 0) return;
+                if (target.selectionStart !== target.selectionEnd) {
+                    target.remove(target.selectionStart, target.selectionEnd);
+                }
+                target.insert(target.cursorPosition, body);
+            }
+        }
+    }
 
     // ------------------------------------------------------------------
     // Where the CLI is
