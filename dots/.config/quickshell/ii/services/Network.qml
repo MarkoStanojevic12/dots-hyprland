@@ -16,6 +16,9 @@ Singleton {
 
     property bool wifi: true
     property bool ethernet: false
+    property bool ethernetAvailable: false
+    property bool ethernetEnabled: true
+    property string ethernetDevice: ""
 
     property bool wifiEnabled: false
     property bool wifiScanning: false
@@ -63,6 +66,17 @@ Singleton {
         enableWifi(!wifiEnabled);
     }
 
+    function enableEthernet(enabled = true): void {
+        if (!root.ethernetDevice)
+            return;
+        root.ethernetEnabled = enabled;
+        enableEthernetProc.exec(["nmcli", "device", enabled ? "connect" : "disconnect", root.ethernetDevice]);
+    }
+
+    function toggleEthernet(): void {
+        enableEthernet(!root.ethernetEnabled);
+    }
+
     function rescanWifi(): void {
         wifiScanning = true;
         rescanProcess.running = true;
@@ -98,6 +112,11 @@ Singleton {
 
     Process {
         id: enableWifiProc
+    }
+
+    Process {
+        id: enableEthernetProc
+        onExited: root.update()
     }
 
     Process {
@@ -172,7 +191,7 @@ Singleton {
     Process {
         id: updateConnectionType
         property string buffer
-        command: ["sh", "-c", "nmcli -t -f TYPE,STATE d status && nmcli -t -f CONNECTIVITY g"]
+        command: ["sh", "-c", "nmcli -t -f DEVICE,TYPE,STATE d status && nmcli -t -f CONNECTIVITY g"]
         running: true
         function startCheck() {
             buffer = "";
@@ -189,14 +208,29 @@ Singleton {
             let hasEthernet = false;
             let hasWifi = false;
             let wifiStatus = "disconnected";
+            let ethernetDevice = "";
+            let ethernetState = "";
             lines.forEach(line => {
-                if (line.includes("ethernet") && line.includes("connected"))
-                    hasEthernet = true;
-                else if (line.includes("wifi:")) {
-                    if (line.includes("disconnected")) {
+                const fields = line.split(":");
+                const device = fields[0];
+                const type = fields[1];
+                const state = fields[2] ?? "";
+                if (type === "ethernet") {
+                    // Devices with no carrier ("unavailable") can't be toggled, so they
+                    // must not shadow the one the user actually plugged a cable into.
+                    if (state === "unmanaged" || state === "unavailable")
+                        return;
+                    if (!ethernetDevice || state.startsWith("connected")) {
+                        ethernetDevice = device;
+                        ethernetState = state;
+                    }
+                    if (state.startsWith("connected"))
+                        hasEthernet = true;
+                } else if (type === "wifi") {
+                    if (state === "disconnected") {
                         wifiStatus = "disconnected"
                     }
-                    else if (line.includes("connected")) {
+                    else if (state.startsWith("connected")) {
                         hasWifi = true;
                         wifiStatus = "connected"
 
@@ -205,10 +239,10 @@ Singleton {
                             wifiStatus = "limited"
                         }
                     }
-                    else if (line.includes("connecting")) {
+                    else if (state.startsWith("connecting")) {
                         wifiStatus = "connecting"
                     }
-                    else if (line.includes("unavailable")) {
+                    else if (state === "unavailable") {
                         wifiStatus = "disabled"
                     }
                 }
@@ -216,6 +250,9 @@ Singleton {
             root.wifiStatus = wifiStatus;
             root.ethernet = hasEthernet;
             root.wifi = hasWifi;
+            root.ethernetDevice = ethernetDevice;
+            root.ethernetAvailable = ethernetDevice !== "";
+            root.ethernetEnabled = ethernetDevice !== "" && !ethernetState.startsWith("disconnect");
         }
     }
 
