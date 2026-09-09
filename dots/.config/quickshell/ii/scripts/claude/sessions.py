@@ -4,7 +4,7 @@
 Claude Code stores one JSONL transcript per conversation under
 ~/.claude/projects/<encoded-cwd>/<session-id>.jsonl. Subcommands:
 
-    list <cwd>              -> [{id, title, mtime, turns}, ...] newest first
+    list <cwd>              -> [{id, title, mtime, turns, category}, ...]
     read <cwd> <session-id> -> [{role, text, model, tools: [...]}, ...]
     dirs                    -> [{path, sessions, mtime}, ...] newest first
     resolve <path>          -> {path, exists}
@@ -14,11 +14,35 @@ All print a single JSON document on stdout.
 
 import json
 import os
+import re
 import sys
 
-PROJECTS = os.path.expanduser("~/.claude/projects")
+HOME = os.path.expanduser("~")
+PROJECTS = os.path.join(HOME, ".claude", "projects")
 MAX_SESSIONS = 60
 TITLE_LIMIT = 90
+
+CATEGORIES = ("Coding", "Hyprland", "Misc")
+
+# A path under any of these means the conversation was desktop-config work.
+DESKTOP_MARKERS = (
+    "/.config/hypr",
+    "/.config/quickshell",
+    "/.config/illogical-impulse",
+    "/dots-hyprland",
+)
+# Neither signal: Claude's own state (a memory file is not "coding"), and the
+# system tree, which every kind of conversation pokes at.
+IGNORED_PREFIXES = (
+    os.path.join(HOME, ".claude") + "/",
+    "/usr/", "/etc/", "/opt/", "/var/", "/tmp/",
+    "/proc/", "/sys/", "/dev/", "/run/", "/bin/", "/sbin/", "/lib/",
+)
+
+# Anchored paths only. A bare `modules/ii/bar/Bar.qml` cannot be placed --
+# the shell's directory at the time is not in the transcript -- and guessing
+# wrong files config work under whatever project the session was started in.
+PATH_RE = re.compile(r"(?<![\w.\-/~])(?:~/[\w.\-/]+|/(?:[\w.\-]+/)+[\w.\-]+)")
 
 
 def project_dirs(cwd):
@@ -111,11 +135,56 @@ def readable(text):
     return " ".join(text.split())
 
 
+def tool_paths(message):
+    """Every file path a turn's tool calls point at.
+
+    Shell commands count too: with Bash-first tooling a whole conversation can
+    touch files without a single `file_path` argument, which would otherwise
+    read as if it had touched nothing.
+    """
+    for block in blocks_of(message):
+        if block.get("type") != "tool_use":
+            continue
+        args = block.get("input")
+        if not isinstance(args, dict):
+            continue
+        for key in ("file_path", "notebook_path", "path"):
+            value = args.get(key)
+            if isinstance(value, str) and value:
+                yield value
+        command = args.get("command")
+        if isinstance(command, str):
+            for match in PATH_RE.finditer(command):
+                yield match.group(0)
+
+
+def categorize(paths):
+    """Bucket a conversation by the files it worked on.
+
+    A majority vote rather than first-match: a coding session that glances at
+    one config file is still a coding session.
+    """
+    desktop = 0
+    code = 0
+    for path in paths:
+        absolute = os.path.join(HOME, path[2:]) if path.startswith("~/") else path
+        if any(marker in absolute for marker in DESKTOP_MARKERS):
+            desktop += 1
+        elif not absolute.startswith(IGNORED_PREFIXES):
+            code += 1
+    if desktop and desktop >= code:
+        return "Hyprland"
+    if code:
+        return "Coding"
+    return "Misc"
+
+
 def summarize(path, cwd):
     title = ""
     turns = 0
     session = ""
     confirmed = False
+    paths = set()
 
     for entry in entries(path):
         entry_cwd = entry.get("cwd")
@@ -128,6 +197,8 @@ def summarize(path, cwd):
             turns += 1
             if not title:
                 title = readable(text_of(entry.get("message") or {}))[:TITLE_LIMIT]
+        elif entry.get("type") == "assistant":
+            paths.update(tool_paths(entry.get("message") or {}))
 
     if not confirmed or turns == 0:
         return None
@@ -136,6 +207,7 @@ def summarize(path, cwd):
         "title": title or "(no prompt)",
         "mtime": int(os.path.getmtime(path)),
         "turns": turns,
+        "category": categorize(paths),
     }
 
 
@@ -147,6 +219,7 @@ def list_sessions(cwd):
             found.append(summary)
         if len(found) >= MAX_SESSIONS:
             break
+    found.sort(key=lambda item: (CATEGORIES.index(item["category"]), -item["mtime"]))
     return found
 
 
