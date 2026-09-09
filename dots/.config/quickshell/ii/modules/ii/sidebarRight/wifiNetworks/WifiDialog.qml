@@ -14,6 +14,28 @@ WindowDialog {
     WindowDialogTitle {
         text: Translation.tr("Connect to Wi-Fi")
     }
+    ConfigSwitch {
+        visible: Network.ethernetAvailable
+        Layout.fillWidth: true
+        Layout.topMargin: -10
+        Layout.bottomMargin: -10
+        Layout.leftMargin: -4
+        Layout.rightMargin: -4
+        iconSize: Appearance.font.pixelSize.larger
+        buttonIcon: "lan"
+        text: Translation.tr("Ethernet")
+        checked: Network.ethernetEnabled
+        onCheckedChanged: {
+            if (checked === Network.ethernetEnabled)
+                return;
+            Network.enableEthernet(checked);
+            // Clicking the row assigns `checked` directly, which drops the binding above
+            checked = Qt.binding(() => Network.ethernetEnabled);
+        }
+        StyledToolTip {
+            text: Network.ethernetDevice
+        }
+    }
     WindowDialogSeparator {
         visible: !Network.wifiScanning
     }
