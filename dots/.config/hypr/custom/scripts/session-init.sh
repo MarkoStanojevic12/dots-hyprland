@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Opens the full working session:
 #   ws1 = VS Code (top-left), GitKraken (bottom-left), Qt Creator (right)
-#   ws2 = 4 Chrome windows in a 2x2 grid (left), Slack (right)
+#   ws2 = personal Chrome (left), work Chrome (top-right), client Chrome (bottom-right)
+#   ws3 = Slack (left), WhatsApp (right)
 #
 # This config uses Hyprland's Lua parser, so `hyprctl keyword` is rejected outright
 # and `hyprctl dispatch` takes a Lua expression, not the legacy "workspace 2" form.
@@ -58,8 +59,8 @@ hypr() {
 }
 
 if [ "$FORCE" -eq 0 ] &&
-    [ "$(hyprctl clients -j | jq '[.[] | select(.workspace.id == 1 or .workspace.id == 2)] | length')" -gt 0 ]; then
-    notify "Workspaces 1/2 are not empty. Close them first, or run with --force."
+    [ "$(hyprctl clients -j | jq '[.[] | select(.workspace.id == 1 or .workspace.id == 2 or .workspace.id == 3)] | length')" -gt 0 ]; then
+    notify "Workspaces 1/2/3 are not empty. Close them first, or run with --force."
     exit 1
 fi
 
@@ -73,7 +74,7 @@ hypr eval 'hl.config({ misc = { focus_on_activate = false }, dwindle = { force_s
 hypr eval 'hl.window_rule({match = {class = "^code$"}, workspace = "1 silent"})'
 hypr eval 'hl.window_rule({match = {class = "^org\\.qt-project\\.qtcreator$"}, workspace = "1 silent"})'
 hypr eval 'hl.window_rule({match = {class = "^gitkraken$"}, workspace = "1 silent"})'
-hypr eval 'hl.window_rule({match = {class = "^slack$"}, workspace = "2 silent"})'
+hypr eval 'hl.window_rule({match = {class = "^slack$"}, workspace = "3 silent"})'
 hypr eval 'hl.window_rule({match = {class = "^google-chrome$"}, workspace = "2 silent"})'
 
 LAST=""
@@ -148,21 +149,19 @@ launch 1 '^gitkraken$' gitkraken || exit 1 # tall parent -> splits below
 resize "$CODE" 1384 1049 # width hits the root split, height the code/gitkraken one
 
 # --- Workspace 2 -------------------------------------------------------------
-chrome_window 2 "Default" "${PERSONAL_TABS[@]}" || exit 1
+chrome_window 2 "Default" "${PERSONAL_TABS[@]}" || exit 1 # wide parent -> splits right
 PERSONAL=$LAST
-launch 2 '^slack$' slack || exit 1 # wide parent -> splits right
-SLACK=$LAST
-focus "$PERSONAL"
-chrome_window 2 "Profile 1" "${WORK_TABS[@]}" || exit 1 # tall parent -> splits below
+chrome_window 2 "Profile 1" "${WORK_TABS[@]}" || exit 1
 WORK=$LAST
-focus "$PERSONAL"
-chrome_window 2 "Profile 1" "${WHATSAPP_TABS[@]}" || exit 1 # wide parent -> splits right
 focus "$WORK"
-chrome_window 2 "Profile 1" "${CLIENT_TABS[@]}" || exit 1 # wide parent -> splits right
+chrome_window 2 "Profile 1" "${CLIENT_TABS[@]}" || exit 1 # tall parent -> splits below
 
-# Outer split first: the inner ratios are fractions of whatever is left.
-resize "$SLACK" 1436 keep
-resize "$PERSONAL" 1332 1046
-resize "$WORK" 1404 keep
+# --- Workspace 3 -------------------------------------------------------------
+launch 3 '^slack$' slack || exit 1 # wide parent -> splits right
+
+# Later rules win at map time, so this redirects only the Chrome window opened
+# after it; the ws2 windows above already mapped under the "2 silent" rule.
+hypr eval 'hl.window_rule({match = {class = "^google-chrome$"}, workspace = "3 silent"})'
+chrome_window 3 "Profile 1" "${WHATSAPP_TABS[@]}" || exit 1
 
 hypr dispatch 'hl.dsp.focus({ workspace = 1 })'
