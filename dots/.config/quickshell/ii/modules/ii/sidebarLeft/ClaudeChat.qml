@@ -393,14 +393,37 @@ Item {
                     model: ScriptModel {
                         values: ClaudeCode.sessions
                     }
-                    delegate: SessionListItem {
+                    delegate: Column {
+                        id: historyEntry
                         required property var modelData
+                        required property int index
+                        // The list arrives grouped by category, so a heading is
+                        // just the point where the category changes.
+                        readonly property bool opensCategory: historyEntry.index === 0
+                            || ClaudeCode.sessions[historyEntry.index - 1]?.category !== historyEntry.modelData?.category
+
                         width: historyList.width
-                        session: modelData
-                        current: ClaudeCode.resumeSessionId === modelData.id
-                        onClicked: {
-                            ClaudeCode.loadSession(modelData.id);
-                            root.historyShown = false;
+                        spacing: 2
+
+                        StyledText {
+                            visible: historyEntry.opensCategory
+                            leftPadding: 8
+                            topPadding: historyEntry.index === 0 ? 2 : 8
+                            bottomPadding: 2
+                            font.pixelSize: Appearance.font.pixelSize.smallest
+                            font.weight: Font.DemiBold
+                            color: Appearance.colors.colSubtext
+                            text: historyEntry.modelData?.category ?? ""
+                        }
+
+                        SessionListItem {
+                            width: parent.width
+                            session: historyEntry.modelData
+                            current: ClaudeCode.resumeSessionId === historyEntry.modelData.id
+                            onClicked: {
+                                ClaudeCode.loadSession(historyEntry.modelData.id);
+                                root.historyShown = false;
+                            }
                         }
                     }
                 }
