@@ -60,8 +60,19 @@ Item {
         root.historyShown = !root.historyShown;
         if (root.historyShown) {
             root.usefulFeaturesShown = false;
+            historySearch.clear();
+            historySearch.forceActiveFocus();
             ClaudeCode.refreshSessions();
         }
+    }
+
+    // Matched against the generated title, the opening prompt and the category,
+    // so both "what it was about" and "what I typed" find a conversation.
+    readonly property var matchingSessions: {
+        const needle = historySearch.text.trim().toLowerCase();
+        if (needle.length === 0) return ClaudeCode.sessions;
+        return ClaudeCode.sessions.filter(session =>
+            `${session.title} ${session.prompt} ${session.category}`.toLowerCase().includes(needle));
     }
 
     function toggleUsefulFeatures() {
@@ -377,66 +388,97 @@ Item {
             Rectangle {
                 width: mainColumn.width
                 implicitHeight: Math.min(
-                    Math.max(historyList.contentHeight, emptyHistoryLabel.implicitHeight) + 8,
+                    historySearch.implicitHeight
+                        + Math.max(historyList.contentHeight, emptyHistoryLabel.implicitHeight) + 12,
                     root.height * 0.5)
                 radius: Appearance.rounding.small
                 color: Appearance.colors.colLayer2
 
-                StyledListView {
-                    id: historyList
+                ColumnLayout {
                     anchors {
                         fill: parent
                         margins: 4
                     }
-                    clip: true
-                    spacing: 2
-                    model: ScriptModel {
-                        values: ClaudeCode.sessions
+                    spacing: 4
+
+                    MaterialTextField {
+                        id: historySearch
+                        Layout.fillWidth: true
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        placeholderText: Translation.tr("Search conversations…")
+                        Keys.onPressed: event => {
+                            if (event.key !== Qt.Key_Escape) return;
+                            // Escape backs out of the search before it backs out
+                            // of the panel, so a typo does not cost the list.
+                            if (historySearch.text.length > 0) historySearch.clear();
+                            else root.historyShown = false;
+                            event.accepted = true;
+                        }
                     }
-                    delegate: Column {
-                        id: historyEntry
-                        required property var modelData
-                        required property int index
-                        // The list arrives grouped by category, so a heading is
-                        // just the point where the category changes.
-                        readonly property bool opensCategory: historyEntry.index === 0
-                            || ClaudeCode.sessions[historyEntry.index - 1]?.category !== historyEntry.modelData?.category
 
-                        width: historyList.width
-                        spacing: 2
+                    Item {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
 
-                        StyledText {
-                            visible: historyEntry.opensCategory
-                            leftPadding: 8
-                            topPadding: historyEntry.index === 0 ? 2 : 8
-                            bottomPadding: 2
-                            font.pixelSize: Appearance.font.pixelSize.smallest
-                            font.weight: Font.DemiBold
-                            color: Appearance.colors.colSubtext
-                            text: historyEntry.modelData?.category ?? ""
+                        StyledListView {
+                            id: historyList
+                            anchors.fill: parent
+                            clip: true
+                            spacing: 2
+                            model: ScriptModel {
+                                values: root.matchingSessions
+                            }
+                            delegate: Column {
+                                id: historyEntry
+                                required property var modelData
+                                required property int index
+                                // The list arrives grouped by category, so a heading
+                                // is just the point where the category changes.
+                                readonly property bool opensCategory: historyEntry.index === 0
+                                    || root.matchingSessions[historyEntry.index - 1]?.category !== historyEntry.modelData?.category
+
+                                width: historyList.width
+                                spacing: 2
+
+                                StyledText {
+                                    visible: historyEntry.opensCategory
+                                    leftPadding: 8
+                                    topPadding: historyEntry.index === 0 ? 2 : 8
+                                    bottomPadding: 2
+                                    font.pixelSize: Appearance.font.pixelSize.smallest
+                                    font.weight: Font.DemiBold
+                                    color: Appearance.colors.colSubtext
+                                    text: historyEntry.modelData?.category ?? ""
+                                }
+
+                                SessionListItem {
+                                    width: parent.width
+                                    session: historyEntry.modelData
+                                    current: ClaudeCode.resumeSessionId === historyEntry.modelData.id
+                                    onClicked: {
+                                        ClaudeCode.loadSession(historyEntry.modelData.id);
+                                        root.historyShown = false;
+                                    }
+                                }
+                            }
                         }
 
-                        SessionListItem {
-                            width: parent.width
-                            session: historyEntry.modelData
-                            current: ClaudeCode.resumeSessionId === historyEntry.modelData.id
-                            onClicked: {
-                                ClaudeCode.loadSession(historyEntry.modelData.id);
-                                root.historyShown = false;
+                        StyledText {
+                            id: emptyHistoryLabel
+                            anchors.centerIn: parent
+                            width: parent.width - 16
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.Wrap
+                            visible: root.matchingSessions.length === 0
+                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            color: Appearance.colors.colSubtext
+                            text: {
+                                if (ClaudeCode.sessionsLoading) return Translation.tr("Looking for past conversations…");
+                                if (historySearch.text.trim().length > 0) return Translation.tr("Nothing matches that search");
+                                return Translation.tr("No past conversations here yet");
                             }
                         }
                     }
-                }
-
-                StyledText {
-                    id: emptyHistoryLabel
-                    anchors.centerIn: parent
-                    visible: ClaudeCode.sessions.length === 0
-                    font.pixelSize: Appearance.font.pixelSize.smaller
-                    color: Appearance.colors.colSubtext
-                    text: ClaudeCode.sessionsLoading
-                        ? Translation.tr("Looking for past conversations…")
-                        : Translation.tr("No past conversations here yet")
                 }
             }
         }
