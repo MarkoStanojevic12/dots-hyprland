@@ -8,6 +8,7 @@ Claude Code stores one JSONL transcript per conversation under
     read <cwd> <session-id> -> [{role, text, model, tools: [...]}, ...]
     dirs                    -> [{path, sessions, mtime}, ...] newest first
     resolve <path>          -> {path, exists}
+    retitle <cwd> <cli> [session-id] -> {updated: n}
 
 All print a single JSON document on stdout.
 """
@@ -15,6 +16,7 @@ All print a single JSON document on stdout.
 import json
 import os
 import re
+import subprocess
 import sys
 
 HOME = os.path.expanduser("~")
@@ -43,6 +45,22 @@ IGNORED_PREFIXES = (
 # the shell's directory at the time is not in the transcript -- and guessing
 # wrong files config work under whatever project the session was started in.
 PATH_RE = re.compile(r"(?<![\w.\-/~])(?:~/[\w.\-/]+|/(?:[\w.\-]+/)+[\w.\-]+)")
+
+STATE = os.environ.get("XDG_STATE_HOME") or os.path.join(HOME, ".local", "state")
+TITLES_PATH = os.path.join(STATE, "quickshell", "user", "claude", "titles.json")
+TITLE_MODEL = "claude-haiku-4-5-20251001"
+TITLE_BATCH = 8  # Untitled conversations to name per `retitle` run.
+DIGEST_PROMPTS = 8
+DIGEST_CHARS = 240
+
+TITLE_PROMPT = """\
+You are naming Claude Code conversations for a sidebar history list.
+
+For each conversation below, write a title of at most six words naming what
+the person was trying to get done -- the goal, not the first thing they said.
+No trailing period, no quotes, no conversation number.
+
+Reply with nothing but a JSON array of {"id": "...", "title": "..."}."""
 
 
 def project_dirs(cwd):
@@ -180,7 +198,7 @@ def categorize(paths):
 
 
 def summarize(path, cwd):
-    title = ""
+    prompts = []
     turns = 0
     session = ""
     confirmed = False
@@ -195,8 +213,9 @@ def summarize(path, cwd):
         session = entry.get("sessionId") or session
         if is_typed_by_user(entry):
             turns += 1
-            if not title:
-                title = readable(text_of(entry.get("message") or {}))[:TITLE_LIMIT]
+            text = readable(text_of(entry.get("message") or {}))
+            if text and len(prompts) < DIGEST_PROMPTS:
+                prompts.append(text[:DIGEST_CHARS])
         elif entry.get("type") == "assistant":
             paths.update(tool_paths(entry.get("message") or {}))
 
@@ -204,14 +223,128 @@ def summarize(path, cwd):
         return None
     return {
         "id": session or os.path.basename(path)[: -len(".jsonl")],
-        "title": title or "(no prompt)",
+        "title": prompts[0][:TITLE_LIMIT] if prompts else "(no prompt)",
         "mtime": int(os.path.getmtime(path)),
         "turns": turns,
         "category": categorize(paths),
+        "prompts": prompts,
     }
 
 
-def list_sessions(cwd):
+def load_titles():
+    try:
+        with open(TITLES_PATH) as handle:
+            cached = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    return cached if isinstance(cached, dict) else {}
+
+
+def save_titles(titles):
+    os.makedirs(os.path.dirname(TITLES_PATH), exist_ok=True)
+    staging = TITLES_PATH + ".tmp"
+    with open(staging, "w") as handle:
+        json.dump(titles, handle, indent=1, sort_keys=True)
+    os.replace(staging, TITLES_PATH)  # The sidebar reads this concurrently.
+
+
+def milestone(turns):
+    """Largest power of two at or below `turns`.
+
+    A conversation's goal drifts fastest at the start, so the title is renewed
+    when this moves -- turns 1, 2, 4, 8, 16 -- rather than on every turn.
+    """
+    return 1 << (turns.bit_length() - 1) if turns > 0 else 0
+
+
+def needs_title(item, titles):
+    cached = titles.get(item["id"])
+    if not cached or not cached.get("title"):
+        return True
+    return milestone(item["turns"]) != milestone(cached.get("turns", 0))
+
+
+def parse_titles(text):
+    start = text.find("[")
+    end = text.rfind("]")
+    if start < 0 or end < start:
+        return {}
+    try:
+        named = json.loads(text[start:end + 1])
+    except ValueError:
+        return {}
+    if not isinstance(named, list):
+        return {}
+    titles = {}
+    for item in named:
+        if not isinstance(item, dict):
+            continue
+        key, title = item.get("id"), item.get("title")
+        if isinstance(key, str) and isinstance(title, str) and title.strip():
+            titles[key] = " ".join(title.split())[:TITLE_LIMIT]
+    return titles
+
+
+def ask_for_titles(cli, pending):
+    conversations = "\n".join(
+        '<conversation id="{}">\n{}\n</conversation>'.format(
+            item["id"], "\n".join("user: " + prompt for prompt in item["prompts"])
+        )
+        for item in pending
+    )
+    try:
+        finished = subprocess.run(
+            [
+                cli, "-p",
+                "--model", TITLE_MODEL,
+                # Leaves no transcript of its own, so naming conversations does
+                # not add conversations to the list being named.
+                "--no-session-persistence",
+                "--restricted",
+                "--strict-mcp-config",
+                "--output-format", "text",
+                TITLE_PROMPT + "\n\n" + conversations,
+            ],
+            cwd="/tmp",  # Away from any CLAUDE.md; the prompt is self-contained.
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=180,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    return parse_titles(finished.stdout)
+
+
+def retitle(cwd, cli, session_id=""):
+    if not cli:
+        return {"updated": 0}
+    titles = load_titles()
+    if session_id:
+        # The live conversation, named after every turn -- reading one
+        # transcript instead of every transcript in the directory.
+        path = session_path(cwd, session_id)
+        found = [item for item in [summarize(path, cwd)] if item] if path else []
+    else:
+        found = scan(cwd)
+    pending = [item for item in found if needs_title(item, titles)][:TITLE_BATCH]
+    if not pending:
+        return {"updated": 0}
+
+    named = ask_for_titles(cli, pending)
+    updated = 0
+    for item in pending:
+        title = named.get(item["id"])
+        if title:
+            titles[item["id"]] = {"title": title, "turns": item["turns"]}
+            updated += 1
+    if updated:
+        save_titles(titles)
+    return {"updated": updated}
+
+
+def scan(cwd):
+    """Every summary for `cwd`, newest first, digests still attached."""
     found = []
     for path in transcripts(cwd):
         summary = summarize(path, cwd)
@@ -219,6 +352,20 @@ def list_sessions(cwd):
             found.append(summary)
         if len(found) >= MAX_SESSIONS:
             break
+    return found
+
+
+def list_sessions(cwd):
+    titles = load_titles()
+    found = scan(cwd)
+    for item in found:
+        cached = titles.get(item["id"])
+        if cached and cached.get("title"):
+            item["title"] = cached["title"]
+        # A generated title drops words the person actually typed, so the
+        # opening prompt stays available for the search box to match on.
+        prompts = item.pop("prompts")
+        item["prompt"] = prompts[0][:TITLE_LIMIT] if prompts else ""
     found.sort(key=lambda item: (CATEGORIES.index(item["category"]), -item["mtime"]))
     return found
 
@@ -266,14 +413,19 @@ def conversation(path):
     return messages
 
 
-def read_session(cwd, session_id):
+def session_path(cwd, session_id):
     if not session_id or "/" in session_id:
-        return []
+        return None
     for directory in project_dirs(cwd):
         path = os.path.join(directory, session_id + ".jsonl")
         if os.path.isfile(path):
-            return conversation(path)
-    return []
+            return path
+    return None
+
+
+def read_session(cwd, session_id):
+    path = session_path(cwd, session_id)
+    return conversation(path) if path else []
 
 
 def directory_of(path):
@@ -338,8 +490,13 @@ def main():
         result = list_dirs()
     elif len(args) >= 2 and args[0] == "resolve":
         result = resolve(args[1])
+    elif len(args) >= 3 and args[0] == "retitle":
+        result = retitle(args[1], args[2], args[3] if len(args) >= 4 else "")
     else:
-        sys.stderr.write("usage: sessions.py list <cwd> | read <cwd> <id> | dirs | resolve <path>\n")
+        sys.stderr.write(
+            "usage: sessions.py list <cwd> | read <cwd> <id> | dirs | resolve <path>"
+            " | retitle <cwd> <cli> [session-id]\n"
+        )
         return 2
     json.dump(result, sys.stdout)
     sys.stdout.write("\n")

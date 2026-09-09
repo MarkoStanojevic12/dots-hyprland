@@ -1,6 +1,7 @@
 pragma ComponentBehavior: Bound
 
 import qs.modules.common
+import qs.services
 import Quickshell
 import Quickshell.Io
 import QtQuick
@@ -324,6 +325,13 @@ Scope {
     }
 
     function refreshSessions() {
+        root.reloadSessions();
+        root.retitle("");
+    }
+
+    // Re-reads the list without asking for new titles, so a finished `retitle`
+    // can show its work without starting the next batch.
+    function reloadSessions() {
         if (root.sessionsLoading) return;
         root.sessionsLoading = true;
         listSessionsProcess.running = false;
@@ -380,6 +388,39 @@ Scope {
         stderr: SplitParser {
             onRead: data => {
                 if (data.trim().length > 0) console.warn("[ClaudeSession/sessions]", data);
+            }
+        }
+    }
+
+    // Conversations are named by a cheap one-shot model rather than shown by
+    // their first prompt. With no session id it names a batch of whatever is
+    // still unnamed; with one it renames just that conversation.
+    function retitle(id) {
+        if (retitleProcess.running || root.manager.cliPath.length === 0 || root.manager.signedOut) return;
+        retitleProcess.targetId = id;
+        retitleProcess.running = true;
+    }
+
+    Process {
+        id: retitleProcess
+        property string targetId: ""
+        command: ["python3", root.manager.sessionsScript, "retitle",
+            root.workingDirectory, root.manager.cliPath, retitleProcess.targetId]
+        stdout: StdioCollector {
+            id: retitleCollector
+            onStreamFinished: {
+                let updated = 0;
+                try {
+                    updated = JSON.parse(retitleCollector.text)?.updated ?? 0;
+                } catch (e) {
+                    return;
+                }
+                if (updated > 0) root.reloadSessions();
+            }
+        }
+        stderr: SplitParser {
+            onRead: data => {
+                if (data.trim().length > 0) console.warn("[ClaudeSession/retitle]", data);
             }
         }
     }
@@ -1005,6 +1046,8 @@ Scope {
         root.pendingQuestion = null;
         if (!root.active) root.unseen = true;
         root.manager.rememberTabs();
+        // An empty id would mean "name a batch", so never guess here.
+        if (root.sessionId.length > 0) root.retitle(root.sessionId);
 
         if (root.queuedMessages.length > 0) {
             const next = root.queuedMessages[0];
@@ -1039,9 +1082,11 @@ Scope {
             // this stays on and the toggle stays live.
             "--permission-prompt-tool", "stdio",
             "--permission-mode", root.askPermission ? "default" : "bypassPermissions",
-            // Skip the user's MCP servers: they add seconds of startup and a
-            // lot of tool-schema tokens that a desktop sidebar has no use for.
+            // Only the servers the config names, never the account's own: the
+            // rest add seconds of startup and a lot of tool-schema tokens that
+            // a desktop sidebar has no use for.
             "--strict-mcp-config",
+            ...(root.manager.mcpConfigPath.length > 0 ? ["--mcp-config", root.manager.mcpConfigPath] : []),
             "--append-system-prompt", root.manager.options?.systemPrompt ?? "",
             ...(root.spawnModel.length > 0 ? ["--model", root.spawnModel] : []),
             ...(root.spawnEffort.length > 0 ? ["--effort", root.spawnEffort] : []),
