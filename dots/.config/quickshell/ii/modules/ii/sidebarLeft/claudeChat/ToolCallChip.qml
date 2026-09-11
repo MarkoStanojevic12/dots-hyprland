@@ -28,10 +28,15 @@ Rectangle {
     // shut until asked. Clicking breaks the binding, so a manual toggle sticks.
     property bool expanded: root.isEdit || root.isWrite
 
+    // The find-in-chat match navigated to is inside this chip.
+    property bool searchHit: false
+
     Layout.fillWidth: true
     implicitHeight: contentColumn.implicitHeight + 8 * 2
     radius: Appearance.rounding.small
     color: root.errored ? Appearance.colors.colErrorContainer : Appearance.colors.colLayer2
+    border.width: root.searchHit ? 1 : 0
+    border.color: Appearance.colors.colTertiary
     clip: true
 
     Behavior on color {

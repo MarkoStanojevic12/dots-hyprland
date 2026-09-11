@@ -52,6 +52,13 @@ ColumnLayout {
     property string shownText: ""
     property bool fadeChunkSplitting: !forceDisableChunkSplitting && !editing && !/\n\|/.test(shownText) && Config.options.sidebar.ai.textFadeIn
 
+    // Find in chat. Ordinals run message-wide, so the base says where this
+    // block's matches start counting.
+    property string searchQuery: ""
+    property int searchOrdinalBase: 0
+    property int searchCurrent: -1
+    signal currentMatchAt(real y)
+
     Layout.fillWidth: true
 
     Timer {
@@ -137,6 +144,13 @@ ColumnLayout {
     Repeater {
         id: textLinesRepeater
         property list<real> textLineOpacities: []
+        // Matches per chunk, so each chunk knows how many came before it.
+        property var chunkMatchCounts: []
+        function setChunkMatchCount(index, count) {
+            const counts = textLinesRepeater.chunkMatchCounts.slice();
+            counts[index] = count;
+            textLinesRepeater.chunkMatchCounts = counts;
+        }
         model: ScriptModel {
             // Split by either double newlines or single newlines in a list
             values: root.fadeChunkSplitting ? root.shownText.split(/\n\n(?= {0,2})|\n(?= {0,2}[-\*])/g).filter(line => line.trim() !== "") : [root.shownText]
@@ -240,12 +254,17 @@ ColumnLayout {
                 }
             }
 
-            // Rectangle {
-            //     anchors.fill: parent
-            //     color: "#22786378"
-            //     border.width: 1
-            //     border.color: "#7E7E7E"
-            // }
+            SearchMatchOverlay {
+                textEdit: textArea
+                query: root.searchQuery
+                ordinalBase: root.searchOrdinalBase + textLinesRepeater.chunkMatchCounts
+                    .slice(0, textArea.index)
+                    .reduce((sum, count) => sum + (count ?? 0), 0)
+                current: root.searchCurrent
+                onMatchCountChanged: textLinesRepeater.setChunkMatchCount(textArea.index, matchCount)
+                Component.onCompleted: textLinesRepeater.setChunkMatchCount(textArea.index, matchCount)
+                onCurrentMatchAt: y => root.currentMatchAt(textArea.mapToItem(root, 0, y).y)
+            }
         }
     }
 }
