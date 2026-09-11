@@ -189,12 +189,6 @@ Item {
 
     function toggleDirectoryPicker() {
         root.directoryPickerShown = !root.directoryPickerShown;
-        if (root.directoryPickerShown) {
-            ClaudeCode.clearDirectoryError();
-            ClaudeCode.refreshDirectories();
-            directoryInput.text = ClaudeCode.workingDirectory;
-            directoryInput.forceActiveFocus();
-        }
     }
 
     // Clearing leaves the composer empty and ready, so drop focus straight back
@@ -879,92 +873,6 @@ Item {
                     }
                 }
 
-                Revealer { // Working directory picker
-                    vertical: true
-                    reveal: root.directoryPickerShown
-
-                    ColumnLayout {
-                        width: inputColumn.width
-                        spacing: 4
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: 4
-
-                            MaterialTextField {
-                                id: directoryInput
-                                Layout.fillWidth: true
-                                font.pixelSize: Appearance.font.pixelSize.smaller
-                                placeholderText: Translation.tr("Path to a directory…")
-                                onAccepted: ClaudeCode.setWorkingDirectory(directoryInput.text)
-                                Keys.onPressed: event => {
-                                    if (event.key === Qt.Key_Escape) {
-                                        root.directoryPickerShown = false;
-                                        event.accepted = true;
-                                    }
-                                }
-                            }
-
-                            RippleButton {
-                                implicitWidth: 32
-                                implicitHeight: 32
-                                buttonRadius: Appearance.rounding.small
-                                enabled: directoryInput.text.trim().length > 0 && !ClaudeCode.busy
-                                onClicked: ClaudeCode.setWorkingDirectory(directoryInput.text)
-
-                                contentItem: MaterialSymbol {
-                                    anchors.centerIn: parent
-                                    horizontalAlignment: Text.AlignHCenter
-                                    iconSize: Appearance.font.pixelSize.larger
-                                    color: parent.enabled ? Appearance.colors.colOnLayer2 : Appearance.colors.colOnLayer2Disabled
-                                    text: "subdirectory_arrow_left"
-                                }
-                            }
-                        }
-
-                        StyledText {
-                            Layout.fillWidth: true
-                            Layout.leftMargin: 4
-                            visible: ClaudeCode.directoryError.length > 0
-                            wrapMode: Text.Wrap
-                            font.pixelSize: Appearance.font.pixelSize.smallest
-                            color: Appearance.m3colors.m3error
-                            text: ClaudeCode.directoryError
-                        }
-
-                        Rectangle { // Somewhere Claude has already been used
-                            Layout.fillWidth: true
-                            radius: Appearance.rounding.small
-                            color: Appearance.colors.colLayer1
-                            implicitHeight: Math.min(directoryList.contentHeight + 8, root.height * 0.3)
-                            visible: ClaudeCode.knownDirectories.length > 0
-
-                            StyledListView {
-                                id: directoryList
-                                anchors {
-                                    fill: parent
-                                    margins: 4
-                                }
-                                clip: true
-                                spacing: 2
-                                model: ScriptModel {
-                                    values: ClaudeCode.knownDirectories
-                                }
-                                delegate: DirectoryListItem {
-                                    required property var modelData
-                                    width: directoryList.width
-                                    directory: modelData
-                                    current: ClaudeCode.workingDirectory === modelData.path
-                                    onClicked: {
-                                        ClaudeCode.setWorkingDirectory(modelData.path);
-                                        root.directoryPickerShown = false;
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
                 Revealer { // Model picker
                     vertical: true
                     reveal: root.modelPickerShown
@@ -1408,6 +1316,19 @@ Item {
                     }
 
                 }
+            }
+        }
+    }
+
+    Loader { // Working directory picker, over the whole tab
+        anchors.fill: parent
+        active: root.directoryPickerShown
+        visible: active
+        z: 9999
+        sourceComponent: DirectoryPickerDialog {
+            onClosed: {
+                root.directoryPickerShown = false;
+                messageInputField.forceActiveFocus();
             }
         }
     }
