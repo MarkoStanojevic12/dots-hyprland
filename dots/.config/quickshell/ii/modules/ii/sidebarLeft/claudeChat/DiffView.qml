@@ -13,6 +13,8 @@ import org.kde.syntaxhighlighting
  * changed in a narrow column, without pulling in a diff library. Bounded in
  * both directions so a huge write can't stall the sidebar.
  *
+ * Shown side by side by default, old on the left and new on the right, with
+ * filler rows keeping the two in step; a toggle flips it to a unified view.
  * The code is syntax-highlighted from the file's extension, the same way the
  * chat's code blocks are, with the added and removed rows tinted behind it.
  */
@@ -21,6 +23,7 @@ ColumnLayout {
     property string oldText: ""
     property string newText: ""
     property string filePath: ""
+    property bool split: true
     // Diffing is O(n*m); past this the file gets shown as a plain addition.
     readonly property int lineBudget: 400
     readonly property int shownLimit: 60
@@ -69,7 +72,35 @@ ColumnLayout {
         return result;
     }
 
+    // The unified lines folded into rows of [old, new]. A run of removals
+    // followed by additions is paired up line for line; whichever side is
+    // shorter gets filler rows so the two columns stay aligned.
+    readonly property var pairs: {
+        const filler = { sign: "", text: "" };
+        const rows = [];
+        let removed = [];
+        let added = [];
+        const flush = () => {
+            const count = Math.max(removed.length, added.length);
+            for (let k = 0; k < count; k++) rows.push({ left: removed[k] ?? filler, right: added[k] ?? filler });
+            removed = [];
+            added = [];
+        };
+        for (const line of root.lines) {
+            if (line.sign === "-") removed.push(line);
+            else if (line.sign === "+") added.push(line);
+            else {
+                flush();
+                rows.push({ left: line, right: line });
+            }
+        }
+        flush();
+        return rows;
+    }
+
     readonly property var shownLines: root.lines.slice(0, root.shownLimit)
+    readonly property var shownPairs: root.pairs.slice(0, root.shownLimit)
+    readonly property int totalRows: root.split ? root.pairs.length : root.lines.length
     readonly property int addedCount: root.lines.filter(line => line.sign === "+").length
     readonly property int removedCount: root.lines.filter(line => line.sign === "-").length
 
@@ -77,6 +108,13 @@ ColumnLayout {
         return sign === "+" ? Appearance.colors.colPrimary
             : sign === "-" ? Appearance.m3colors.m3error
             : Appearance.colors.colSubtext;
+    }
+
+    function rowTint(sign) {
+        return sign === "+" ? ColorUtils.transparentize(Appearance.colors.colPrimary, 0.85)
+            : sign === "-" ? ColorUtils.transparentize(Appearance.m3colors.m3error, 0.85)
+            : sign === "" ? ColorUtils.transparentize(Appearance.colors.colSubtext, 0.92)
+            : "transparent";
     }
 
     spacing: 2
@@ -105,6 +143,81 @@ ColumnLayout {
             color: Appearance.colors.colSubtext
             text: root.languageName
         }
+
+        RippleButton {
+            implicitWidth: 22
+            implicitHeight: 22
+            buttonRadius: Appearance.rounding.verysmall
+            onClicked: root.split = !root.split
+
+            contentItem: MaterialSymbol {
+                anchors.centerIn: parent
+                horizontalAlignment: Text.AlignHCenter
+                iconSize: Appearance.font.pixelSize.normal
+                color: Appearance.colors.colSubtext
+                text: root.split ? "view_agenda" : "vertical_split"
+            }
+
+            StyledToolTip {
+                text: root.split ? Translation.tr("Show as one column") : Translation.tr("Show side by side")
+            }
+        }
+    }
+
+    // One column of code with tinted rows behind it. Rows are all one height
+    // (monospace at one size, unwrapped), so the tints are laid out by index.
+    component DiffColumn: Item {
+        id: column
+        required property var rows
+        property real textLeftMargin: 4
+        implicitHeight: columnText.contentHeight + 2
+        readonly property real rowHeight: columnText.contentHeight / Math.max(1, columnText.lineCount)
+        clip: true
+
+        Repeater {
+            model: column.rows
+
+            Rectangle {
+                required property var modelData
+                required property int index
+                width: column.width
+                y: index * column.rowHeight + 1
+                height: column.rowHeight
+                radius: Appearance.rounding.verysmall
+                color: root.rowTint(modelData.sign)
+            }
+        }
+
+        TextEdit {
+            id: columnText
+            anchors {
+                left: parent.left
+                right: parent.right
+                top: parent.top
+                leftMargin: column.textLeftMargin
+                rightMargin: 4
+                topMargin: 1
+            }
+            readOnly: true
+            // Clicks belong to the copy box around it.
+            enabled: false
+            wrapMode: TextEdit.NoWrap
+            textFormat: TextEdit.PlainText
+            renderType: Text.NativeRendering
+            // Same size as the chat's code blocks, so both read alike.
+            font.pixelSize: Appearance.font.pixelSize.small
+            font.family: Appearance.font.family.monospace
+            font.hintingPreference: Font.PreferNoHinting
+            color: Appearance.colors.colOnLayer1
+            text: column.rows.map(row => row.text).join("\n")
+
+            SyntaxHighlighter {
+                textEdit: columnText
+                repository: Repository
+                definition: root.definition
+                theme: Appearance.syntaxHighlightingTheme
+            }
+        }
     }
 
     CopyableBox {
@@ -128,87 +241,84 @@ ColumnLayout {
             }
             spacing: 0
 
-            Item { // One row per line: tint behind, sign in the gutter, code beside
-                id: rows
+            Loader {
                 Layout.fillWidth: true
-                implicitHeight: diffText.contentHeight + 2
-                // Monospace at one size, unwrapped, so every row is the same height.
-                readonly property real rowHeight: diffText.contentHeight / Math.max(1, diffText.lineCount)
-
-                Repeater {
-                    model: root.shownLines
-
-                    Rectangle {
-                        required property var modelData
-                        required property int index
-                        width: rows.width
-                        y: index * rows.rowHeight + 1
-                        height: rows.rowHeight
-                        radius: Appearance.rounding.verysmall
-                        color: modelData.sign === "+" ? ColorUtils.transparentize(Appearance.colors.colPrimary, 0.85)
-                            : modelData.sign === "-" ? ColorUtils.transparentize(Appearance.m3colors.m3error, 0.85)
-                            : "transparent"
-                    }
-                }
-
-                Column {
-                    x: 4
-                    y: 1
-
-                    Repeater {
-                        model: root.shownLines
-
-                        StyledText {
-                            required property var modelData
-                            height: rows.rowHeight
-                            verticalAlignment: Text.AlignVCenter
-                            font.pixelSize: Appearance.font.pixelSize.small
-                            font.family: Appearance.font.family.monospace
-                            color: root.signColor(modelData.sign)
-                            text: modelData.sign
-                        }
-                    }
-                }
-
-                TextEdit {
-                    id: diffText
-                    anchors {
-                        left: parent.left
-                        right: parent.right
-                        top: parent.top
-                        leftMargin: 16
-                        rightMargin: 4
-                        topMargin: 1
-                    }
-                    readOnly: true
-                    // Clicks belong to the copy box around it.
-                    enabled: false
-                    wrapMode: TextEdit.NoWrap
-                    textFormat: TextEdit.PlainText
-                    renderType: Text.NativeRendering
-                    // Same size as the chat's code blocks, so both read alike.
-                    font.pixelSize: Appearance.font.pixelSize.small
-                    font.family: Appearance.font.family.monospace
-                    font.hintingPreference: Font.PreferNoHinting
-                    color: Appearance.colors.colOnLayer1
-                    text: root.shownLines.map(line => line.text).join("\n")
-
-                    SyntaxHighlighter {
-                        textEdit: diffText
-                        repository: Repository
-                        definition: root.definition
-                        theme: Appearance.syntaxHighlightingTheme
-                    }
-                }
+                sourceComponent: root.split ? splitView : unifiedView
             }
 
             StyledText {
                 Layout.fillWidth: true
                 Layout.topMargin: 2
-                visible: root.lines.length > root.shownLimit
+                visible: root.totalRows > root.shownLimit
                 font.pixelSize: Appearance.font.pixelSize.smallest
                 color: Appearance.colors.colSubtext
-                text: Translation.tr("…and %1 more lines").arg(root.lines.length - root.shownLimit)
+                text: Translation.tr("…and %1 more lines").arg(root.totalRows - root.shownLimit)
+            }
+        }
+    }
+
+    Component { // Old on the left, new on the right, row for row
+        id: splitView
+
+        RowLayout {
+            spacing: 0
+
+            DiffColumn {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+                rows: root.shownPairs.map(pair => pair.left)
+            }
+
+            Rectangle {
+                Layout.fillHeight: true
+                Layout.leftMargin: 3
+                Layout.rightMargin: 3
+                implicitWidth: 1
+                color: Appearance.colors.colOutlineVariant
+            }
+
+            DiffColumn {
+                Layout.fillWidth: true
+                Layout.preferredWidth: 1
+                rows: root.shownPairs.map(pair => pair.right)
+            }
+        }
+    }
+
+    Component { // Every line in one column, signs in the gutter
+        id: unifiedView
+
+        Item {
+            implicitHeight: unifiedColumn.implicitHeight
+
+            DiffColumn {
+                id: unifiedColumn
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    top: parent.top
+                }
+                textLeftMargin: 16
+                rows: root.shownLines
+            }
+
+            Column {
+                x: 4
+                y: 1
+
+                Repeater {
+                    model: root.shownLines
+
+                    StyledText {
+                        required property var modelData
+                        height: unifiedColumn.rowHeight
+                        verticalAlignment: Text.AlignVCenter
+                        font.pixelSize: Appearance.font.pixelSize.small
+                        font.family: Appearance.font.family.monospace
+                        color: root.signColor(modelData.sign)
+                        text: modelData.sign
+                    }
+                }
             }
         }
     }
