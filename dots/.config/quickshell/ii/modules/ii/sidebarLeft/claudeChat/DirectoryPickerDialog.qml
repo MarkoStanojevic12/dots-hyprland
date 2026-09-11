@@ -13,7 +13,7 @@ Item {
     id: root
     property real dialogPadding: 12
     property real dialogMargin: 12
-    readonly property int columns: Math.max(2, Math.floor((dialog.width - root.dialogPadding * 2) / 220))
+    readonly property int columns: Math.max(1, Math.floor((dialog.width - root.dialogPadding * 2) / 200))
 
     signal closed()
 
@@ -76,12 +76,8 @@ Item {
 
     Rectangle { // The dialog
         id: dialog
-        anchors {
-            left: parent.left
-            right: parent.right
-            verticalCenter: parent.verticalCenter
-            margins: root.dialogMargin
-        }
+        anchors.centerIn: parent
+        width: (parent.width - root.dialogMargin * 2) / 2
         height: Math.min(dialogColumn.implicitHeight + root.dialogPadding * 2, parent.height - root.dialogMargin * 2)
         radius: Appearance.rounding.normal
         color: Appearance.m3colors.m3surfaceContainerHigh
