@@ -143,6 +143,7 @@ Rectangle {
             active: root.expanded && (root.isEdit || root.isWrite)
             visible: active
             sourceComponent: DiffView {
+                filePath: root.input?.file_path ?? ""
                 oldText: root.isEdit ? (root.input?.old_string ?? "") : ""
                 newText: root.isEdit ? (root.input?.new_string ?? "") : (root.input?.content ?? "")
             }
