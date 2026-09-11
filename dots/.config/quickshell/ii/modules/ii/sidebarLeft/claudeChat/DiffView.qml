@@ -162,7 +162,7 @@ ColumnLayout {
                             required property var modelData
                             height: rows.rowHeight
                             verticalAlignment: Text.AlignVCenter
-                            font.pixelSize: Appearance.font.pixelSize.smallest
+                            font.pixelSize: Appearance.font.pixelSize.small
                             font.family: Appearance.font.family.monospace
                             color: root.signColor(modelData.sign)
                             text: modelData.sign
@@ -186,7 +186,8 @@ ColumnLayout {
                     wrapMode: TextEdit.NoWrap
                     textFormat: TextEdit.PlainText
                     renderType: Text.NativeRendering
-                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    // Same size as the chat's code blocks, so both read alike.
+                    font.pixelSize: Appearance.font.pixelSize.small
                     font.family: Appearance.font.family.monospace
                     font.hintingPreference: Font.PreferNoHinting
                     color: Appearance.colors.colOnLayer1
