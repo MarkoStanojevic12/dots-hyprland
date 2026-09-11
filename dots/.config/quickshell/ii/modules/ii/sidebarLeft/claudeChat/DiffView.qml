@@ -4,6 +4,7 @@ import qs.modules.common.widgets
 import qs.modules.common.functions
 import QtQuick
 import QtQuick.Layouts
+import org.kde.syntaxhighlighting
 
 /**
  * Line-level diff for an Edit or Write tool call.
@@ -11,14 +12,22 @@ import QtQuick.Layouts
  * A plain longest-common-subsequence over lines: enough to see what actually
  * changed in a narrow column, without pulling in a diff library. Bounded in
  * both directions so a huge write can't stall the sidebar.
+ *
+ * The code is syntax-highlighted from the file's extension, the same way the
+ * chat's code blocks are, with the added and removed rows tinted behind it.
  */
 ColumnLayout {
     id: root
     property string oldText: ""
     property string newText: ""
+    property string filePath: ""
     // Diffing is O(n*m); past this the file gets shown as a plain addition.
     readonly property int lineBudget: 400
     readonly property int shownLimit: 60
+
+    // Invalid (no match for the extension) simply highlights nothing.
+    readonly property var definition: Repository.definitionForFileName(root.filePath)
+    readonly property string languageName: String(root.definition?.name ?? "")
 
     readonly property var lines: {
         const before = root.oldText.length > 0 ? root.oldText.split("\n") : [];
@@ -60,8 +69,15 @@ ColumnLayout {
         return result;
     }
 
+    readonly property var shownLines: root.lines.slice(0, root.shownLimit)
     readonly property int addedCount: root.lines.filter(line => line.sign === "+").length
     readonly property int removedCount: root.lines.filter(line => line.sign === "-").length
+
+    function signColor(sign) {
+        return sign === "+" ? Appearance.colors.colPrimary
+            : sign === "-" ? Appearance.m3colors.m3error
+            : Appearance.colors.colSubtext;
+    }
 
     spacing: 2
 
@@ -83,6 +99,12 @@ ColumnLayout {
             text: `-${root.removedCount}`
         }
         Item { Layout.fillWidth: true }
+        StyledText {
+            visible: root.languageName.length > 0 && root.languageName !== "None"
+            font.pixelSize: Appearance.font.pixelSize.smallest
+            color: Appearance.colors.colSubtext
+            text: root.languageName
+        }
     }
 
     CopyableBox {
@@ -106,34 +128,75 @@ ColumnLayout {
             }
             spacing: 0
 
-            Repeater {
-                model: root.lines.slice(0, root.shownLimit)
+            Item { // One row per line: tint behind, sign in the gutter, code beside
+                id: rows
+                Layout.fillWidth: true
+                implicitHeight: diffText.contentHeight + 2
+                // Monospace at one size, unwrapped, so every row is the same height.
+                readonly property real rowHeight: diffText.contentHeight / Math.max(1, diffText.lineCount)
 
-                Rectangle {
-                    required property var modelData
-                    Layout.fillWidth: true
-                    implicitHeight: lineText.implicitHeight + 2
-                    radius: Appearance.rounding.verysmall
-                    color: modelData.sign === "+" ? ColorUtils.transparentize(Appearance.colors.colPrimary, 0.85)
-                        : modelData.sign === "-" ? ColorUtils.transparentize(Appearance.m3colors.m3error, 0.85)
-                        : "transparent"
+                Repeater {
+                    model: root.shownLines
 
-                    StyledText {
-                        id: lineText
-                        anchors {
-                            left: parent.left
-                            right: parent.right
-                            verticalCenter: parent.verticalCenter
-                            leftMargin: 4
-                            rightMargin: 4
+                    Rectangle {
+                        required property var modelData
+                        required property int index
+                        width: rows.width
+                        y: index * rows.rowHeight + 1
+                        height: rows.rowHeight
+                        radius: Appearance.rounding.verysmall
+                        color: modelData.sign === "+" ? ColorUtils.transparentize(Appearance.colors.colPrimary, 0.85)
+                            : modelData.sign === "-" ? ColorUtils.transparentize(Appearance.m3colors.m3error, 0.85)
+                            : "transparent"
+                    }
+                }
+
+                Column {
+                    x: 4
+                    y: 1
+
+                    Repeater {
+                        model: root.shownLines
+
+                        StyledText {
+                            required property var modelData
+                            height: rows.rowHeight
+                            verticalAlignment: Text.AlignVCenter
+                            font.pixelSize: Appearance.font.pixelSize.smallest
+                            font.family: Appearance.font.family.monospace
+                            color: root.signColor(modelData.sign)
+                            text: modelData.sign
                         }
-                        font.pixelSize: Appearance.font.pixelSize.smallest
-                        font.family: Appearance.font.family.monospace
-                        elide: Text.ElideRight
-                        color: parent.modelData.sign === "+" ? Appearance.colors.colPrimary
-                            : parent.modelData.sign === "-" ? Appearance.m3colors.m3error
-                            : Appearance.colors.colSubtext
-                        text: `${parent.modelData.sign} ${parent.modelData.text}`
+                    }
+                }
+
+                TextEdit {
+                    id: diffText
+                    anchors {
+                        left: parent.left
+                        right: parent.right
+                        top: parent.top
+                        leftMargin: 16
+                        rightMargin: 4
+                        topMargin: 1
+                    }
+                    readOnly: true
+                    // Clicks belong to the copy box around it.
+                    enabled: false
+                    wrapMode: TextEdit.NoWrap
+                    textFormat: TextEdit.PlainText
+                    renderType: Text.NativeRendering
+                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    font.family: Appearance.font.family.monospace
+                    font.hintingPreference: Font.PreferNoHinting
+                    color: Appearance.colors.colOnLayer1
+                    text: root.shownLines.map(line => line.text).join("\n")
+
+                    SyntaxHighlighter {
+                        textEdit: diffText
+                        repository: Repository
+                        definition: root.definition
+                        theme: Appearance.syntaxHighlightingTheme
                     }
                 }
             }
