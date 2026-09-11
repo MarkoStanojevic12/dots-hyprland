@@ -176,6 +176,14 @@ Singleton {
     // shared by all of them, the same as the text being typed into it.
     property var pendingAttachments: []
 
+    // The MCP servers a session is allowed to load, as a path the CLI reads.
+    // Empty unless the config names a file, which is what keeps the account's
+    // connectors out of a sidebar that has no use for them.
+    readonly property string mcpConfigPath: {
+        const path = root.options?.mcpConfigPath ?? "";
+        return path.length === 0 ? "" : root.normalizePath(path);
+    }
+
     readonly property string clipboardScript: Quickshell.shellPath("scripts/claude/clipboard-paste.sh")
 
     function detachAttachment(index) {

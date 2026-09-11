@@ -613,6 +613,14 @@ Singleton {
                     // "ask": confirm each tool the CLI isn't already allowed
                     // to use. "bypass": let it act unattended.
                     property string permissionMode: "ask"
+                    // Path to an MCP config file ({"mcpServers": {...}}) whose
+                    // servers this sidebar may use. Empty = none, and none is
+                    // the default: every server costs startup time and carries
+                    // its tool schemas into every turn, so the account's own
+                    // connectors stay out unless they are named here. A server
+                    // still has to be authenticated once from a terminal
+                    // (`claude`, then /mcp).
+                    property string mcpConfigPath: ""
                     property string systemPrompt: "You are running in a desktop sidebar panel on Hyprland, in a column roughly 500px wide. Keep responses short and scannable — the user is reading them in a narrow column, not a terminal. Lead with the answer, skip preamble, and don't recap what you just did unless asked."
                 }
                 property JsonObject booru: JsonObject {
