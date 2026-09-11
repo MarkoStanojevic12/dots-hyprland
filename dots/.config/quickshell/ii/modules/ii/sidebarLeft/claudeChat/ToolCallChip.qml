@@ -144,6 +144,7 @@ Rectangle {
             visible: active
             sourceComponent: DiffView {
                 filePath: root.input?.file_path ?? ""
+                status: root.toolCall?.status ?? "done"
                 oldText: root.isEdit ? (root.input?.old_string ?? "") : ""
                 newText: root.isEdit ? (root.input?.new_string ?? "") : (root.input?.content ?? "")
             }
