@@ -72,6 +72,59 @@ ColumnLayout {
         return result;
     }
 
+    // Which parts of two paired lines actually differ, as character ranges on
+    // each side: a longest-common-subsequence over word, space and punctuation
+    // tokens, with the tokens left out of it marked. Lines with nothing in
+    // common get no ranges; the row tint already says all of it changed.
+    function tokenize(text) {
+        return text.match(/\w+|\s+|[^\w\s]/g) ?? [];
+    }
+
+    function changedSpans(before, after) {
+        const a = root.tokenize(before);
+        const b = root.tokenize(after);
+        if (a.length === 0 || b.length === 0 || a.length * b.length > 40000) return [[], []];
+
+        const table = [];
+        for (let i = 0; i <= a.length; i++) table.push(new Array(b.length + 1).fill(0));
+        for (let i = a.length - 1; i >= 0; i--) {
+            for (let j = b.length - 1; j >= 0; j--) {
+                table[i][j] = a[i] === b[j] ? table[i + 1][j + 1] + 1 : Math.max(table[i + 1][j], table[i][j + 1]);
+            }
+        }
+        const keptA = new Array(a.length).fill(false);
+        const keptB = new Array(b.length).fill(false);
+        let kept = 0;
+        let i = 0;
+        let j = 0;
+        while (i < a.length && j < b.length) {
+            if (a[i] === b[j]) {
+                keptA[i] = keptB[j] = true;
+                if (a[i].trim().length > 0) kept++;
+                i++;
+                j++;
+            } else if (table[i + 1][j] >= table[i][j + 1]) i++;
+            else j++;
+        }
+        if (kept === 0) return [[], []];
+
+        const spansOf = (tokens, keptFlags) => {
+            const spans = [];
+            let offset = 0;
+            for (let k = 0; k < tokens.length; k++) {
+                const end = offset + tokens[k].length;
+                if (!keptFlags[k]) {
+                    const last = spans[spans.length - 1];
+                    if (last && last.end === offset) last.end = end;
+                    else spans.push({ start: offset, end: end });
+                }
+                offset = end;
+            }
+            return spans;
+        };
+        return [spansOf(a, keptA), spansOf(b, keptB)];
+    }
+
     // The unified lines folded into rows of [old, new]. A run of removals
     // followed by additions is paired up line for line; whichever side is
     // shorter gets filler rows so the two columns stay aligned.
@@ -82,7 +135,16 @@ ColumnLayout {
         let added = [];
         const flush = () => {
             const count = Math.max(removed.length, added.length);
-            for (let k = 0; k < count; k++) rows.push({ left: removed[k] ?? filler, right: added[k] ?? filler });
+            for (let k = 0; k < count; k++) {
+                let left = removed[k] ?? filler;
+                let right = added[k] ?? filler;
+                if (removed[k] && added[k]) {
+                    const [leftSpans, rightSpans] = root.changedSpans(left.text, right.text);
+                    left = { sign: "-", text: left.text, spans: leftSpans };
+                    right = { sign: "+", text: right.text, spans: rightSpans };
+                }
+                rows.push({ left, right });
+            }
             removed = [];
             added = [];
         };
@@ -185,6 +247,45 @@ ColumnLayout {
                 height: column.rowHeight
                 radius: Appearance.rounding.verysmall
                 color: root.rowTint(modelData.sign)
+            }
+        }
+
+        // The changed parts within a row, as document positions, so they
+        // can be placed with the text's own layout.
+        readonly property var changed: {
+            const marks = [];
+            let offset = 0;
+            for (const row of column.rows) {
+                for (const span of (row.spans ?? [])) {
+                    marks.push({ sign: row.sign, start: offset + span.start, end: offset + span.end });
+                }
+                offset += row.text.length + 1;
+            }
+            return marks;
+        }
+
+        Repeater {
+            model: column.changed
+
+            Rectangle {
+                id: mark
+                required property var modelData
+                readonly property rect startRect: {
+                    const layout = columnText.contentWidth + columnText.contentHeight;
+                    return columnText.positionToRectangle(mark.modelData.start);
+                }
+                readonly property rect endRect: {
+                    const layout = columnText.contentWidth + columnText.contentHeight;
+                    return columnText.positionToRectangle(mark.modelData.end);
+                }
+                x: columnText.x + mark.startRect.x
+                y: columnText.y + mark.startRect.y
+                width: Math.max(2, mark.endRect.x - mark.startRect.x)
+                height: mark.startRect.height
+                radius: 2
+                color: mark.modelData.sign === "+"
+                    ? ColorUtils.transparentize(Appearance.colors.colPrimary, 0.6)
+                    : ColorUtils.transparentize(Appearance.m3colors.m3error, 0.6)
             }
         }
 
