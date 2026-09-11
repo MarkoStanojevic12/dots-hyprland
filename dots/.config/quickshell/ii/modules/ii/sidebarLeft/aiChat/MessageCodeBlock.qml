@@ -9,6 +9,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 import org.kde.syntaxhighlighting
 
 ColumnLayout {
@@ -28,6 +29,13 @@ ColumnLayout {
     property int searchOrdinalBase: 0
     property int searchCurrent: -1
     signal currentMatchAt(real y)
+
+    // Whether the closing fence has arrived. Only a closed block gets a
+    // preview window, so it never opens on half a page.
+    property bool completed: true
+    readonly property var windowPreviewLangs: ["html", "htm", "xhtml", "svg", "qml"]
+    readonly property bool windowPreviewable: root.windowPreviewLangs.indexOf(String(root.segmentLang ?? "").toLowerCase()) !== -1
+    readonly property string previewBlockScript: Quickshell.shellPath("scripts/claude/preview-block.sh")
 
     // A markdown block is the one case where the snippet is a document rather
     // than something to run: what matters is how it will read once it lands
@@ -121,6 +129,27 @@ ColumnLayout {
             Item { Layout.fillWidth: true }
 
             ButtonGroup {
+                AiMessageControlButton { // HTML and QML, in their own window
+                    id: previewWindowButton
+                    visible: root.windowPreviewable && root.completed
+                    buttonIcon: previewProcess.running ? "refresh" : "open_in_new"
+                    // Re-clicking replaces the window, so an edited block
+                    // shows up instead of a second stale copy.
+                    onClicked: {
+                        previewProcess.running = false;
+                        previewProcess.running = true;
+                    }
+
+                    Process {
+                        id: previewProcess
+                        command: [root.previewBlockScript, String(root.segmentLang ?? "").toLowerCase(), root.segmentContent]
+                    }
+                    StyledToolTip {
+                        text: previewProcess.running
+                            ? Translation.tr("Reload the preview window")
+                            : Translation.tr("Preview in a window")
+                    }
+                }
                 AiMessageControlButton {
                     id: runCodeButton
                     visible: root.runnable
