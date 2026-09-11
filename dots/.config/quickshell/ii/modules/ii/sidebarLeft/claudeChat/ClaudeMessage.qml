@@ -23,6 +23,30 @@ Item {
     readonly property bool isInterface: root.messageData?.role === "interface"
     property list<var> messageBlocks: StringUtils.splitMarkdownBlocks(root.messageData?.content ?? "")
 
+    // Find in chat. `searchCurrent` is the ordinal, within this message, of
+    // the match navigated to, or -1 while it is in some other message. The
+    // block holding it reports where it sits so the list can scroll to it.
+    property string searchQuery: ""
+    property int searchCurrent: -1
+    property real searchCurrentY: -1
+    onSearchQueryChanged: root.searchCurrentY = -1
+
+    // Where each timeline entry's matches start counting, in timeline order.
+    readonly property var searchRanges: {
+        const ranges = [];
+        let base = 0;
+        for (const item of root.timeline) {
+            let count = 0;
+            if (root.searchQuery.length > 0) {
+                if (item.type === "tool") count = ClaudeCode.countMatches(ClaudeCode.toolSearchText(item.call), root.searchQuery);
+                else if (item.type !== "thought" && item.type !== "question") count = ClaudeCode.countMatches(item.content, root.searchQuery);
+            }
+            ranges.push({ base, count });
+            base += count;
+        }
+        return ranges;
+    }
+
     // The turn as one chronological list — prose blocks and the tool calls and
     // thinking pauses that happened between them, in the order they happened.
     // Every entry carries where in the prose it landed, so the content is sliced
@@ -244,6 +268,11 @@ Item {
                     RowLayout {
                         id: toolRow
                         required property var modelData
+                        required property int index
+                        readonly property var searchRange: root.searchRanges[toolRow.index] ?? ({ base: 0, count: 0 })
+                        readonly property bool searchHit: root.searchCurrent >= toolRow.searchRange.base
+                            && root.searchCurrent < toolRow.searchRange.base + toolRow.searchRange.count
+                        onSearchHitChanged: if (toolRow.searchHit) root.searchCurrentY = toolRow.y
                         Layout.fillWidth: true
                         Layout.leftMargin: 4
                         Layout.rightMargin: 4
@@ -259,16 +288,24 @@ Item {
                         ToolCallChip {
                             Layout.fillWidth: true
                             toolCall: toolRow.modelData.call
+                            searchHit: toolRow.searchHit
                         }
                     }
                 }
                 DelegateChoice {
                     roleValue: "code"
                     MessageCodeBlock {
+                        id: codeBlock
+                        required property var modelData
+                        required property int index
                         enableMouseSelection: true
                         segmentContent: modelData.content
                         segmentLang: modelData.lang
                         messageData: root.messageData
+                        searchQuery: root.searchQuery
+                        searchOrdinalBase: root.searchRanges[codeBlock.index]?.base ?? 0
+                        searchCurrent: root.searchCurrent
+                        onCurrentMatchAt: y => root.searchCurrentY = codeBlock.mapToItem(root, 0, y).y
                     }
                 }
                 DelegateChoice {
@@ -284,6 +321,13 @@ Item {
                 DelegateChoice {
                     roleValue: "text"
                     MessageTextBlock {
+                        id: textBlock
+                        required property var modelData
+                        required property int index
+                        searchQuery: root.searchQuery
+                        searchOrdinalBase: root.searchRanges[textBlock.index]?.base ?? 0
+                        searchCurrent: root.searchCurrent
+                        onCurrentMatchAt: y => root.searchCurrentY = textBlock.mapToItem(root, 0, y).y
                         enableMouseSelection: true
                         bodyFontSize: Config.options.sidebar.claude.fontSize
                         // Paths Claude mentions become links to the file itself.

@@ -23,6 +23,12 @@ ColumnLayout {
     property bool isCommandRequest: segmentLang === "command"
     property var displayLang: (isCommandRequest ? "bash" : segmentLang)
 
+    // Find in chat, numbered message-wide like MessageTextBlock.
+    property string searchQuery: ""
+    property int searchOrdinalBase: 0
+    property int searchCurrent: -1
+    signal currentMatchAt(real y)
+
     // A markdown block is the one case where the snippet is a document rather
     // than something to run: what matters is how it will read once it lands
     // wherever it's going, so it gets the compose-box treatment.
@@ -357,6 +363,14 @@ ColumnLayout {
                             repository: Repository
                             definition: Repository.definitionForName(root.displayLang || "plaintext")
                             theme: Appearance.syntaxHighlightingTheme
+                        }
+
+                        SearchMatchOverlay {
+                            textEdit: codeTextArea
+                            query: root.searchQuery
+                            ordinalBase: root.searchOrdinalBase
+                            current: root.searchCurrent
+                            onCurrentMatchAt: y => root.currentMatchAt(codeTextArea.mapToItem(root, 0, y).y)
                         }
                     }
                 }

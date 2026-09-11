@@ -47,6 +47,97 @@ Item {
         messageInputField.forceActiveFocus();
     }
 
+    // Shift+Enter inside a list item carries the marker onto the next line,
+    // numbered lists counting up. On an empty item it drops the marker
+    // instead, which is how the list ends.
+    readonly property var listItemPattern: /^(\s*)(?:(\d+)([.)])|([-*+]))(\s+)(\[[ xX]\]\s+)?(.*)$/
+    function insertNewline() {
+        const text = messageInputField.text;
+        const cursor = messageInputField.cursorPosition;
+        const lineStart = text.lastIndexOf("\n", cursor - 1) + 1;
+        const match = text.slice(lineStart, cursor).match(root.listItemPattern);
+        if (!match) {
+            messageInputField.insert(cursor, "\n");
+            return;
+        }
+        const [, indent, number, numberSeparator, bullet, gap, checkbox, rest] = match;
+        if (rest.trim().length === 0) {
+            messageInputField.remove(lineStart, cursor);
+            return;
+        }
+        const marker = number ? `${Number(number) + 1}${numberSeparator}` : bullet;
+        messageInputField.insert(cursor, `\n${indent}${marker}${gap}${checkbox ? "[ ] " : ""}`);
+    }
+
+    // Find in chat, Ctrl+F. Hits are counted from the model, so a match in a
+    // message whose delegate isn't loaded yet is still reachable.
+    property bool chatSearchShown: false
+    readonly property string chatSearchQuery: root.chatSearchShown && chatSearchField.text.trim().length > 0
+        ? chatSearchField.text : ""
+    readonly property var chatSearchHits: {
+        if (root.chatSearchQuery.length === 0) return [];
+        const hits = [];
+        ClaudeCode.messageIDs.forEach((id, messageIndex) => {
+            const total = ClaudeCode.messageMatchTotal(ClaudeCode.messageByID[id], root.chatSearchQuery);
+            for (let ordinal = 0; ordinal < total; ordinal++) hits.push({ messageIndex, ordinal });
+        });
+        return hits;
+    }
+    property int chatSearchCurrent: 0
+    readonly property var chatSearchHit: root.chatSearchHits[root.chatSearchCurrent] ?? null
+    onChatSearchQueryChanged: {
+        root.chatSearchCurrent = 0;
+        root.chatSearchJump();
+    }
+    onChatSearchHitsChanged: {
+        if (root.chatSearchCurrent >= root.chatSearchHits.length) {
+            root.chatSearchCurrent = Math.max(0, root.chatSearchHits.length - 1);
+        }
+    }
+
+    function openChatSearch() {
+        root.chatSearchShown = true;
+        chatSearchField.forceActiveFocus();
+        chatSearchField.selectAll();
+    }
+
+    function closeChatSearch() {
+        root.chatSearchShown = false;
+        messageInputField.forceActiveFocus();
+    }
+
+    function chatSearchStep(delta) {
+        const count = root.chatSearchHits.length;
+        if (count === 0) return;
+        root.chatSearchCurrent = (root.chatSearchCurrent + delta + count) % count;
+        root.chatSearchJump();
+    }
+
+    function chatSearchJump() {
+        const hit = root.chatSearchHit;
+        if (!hit) return;
+        messageListView.following = false;
+        messageListView.positionViewAtIndex(hit.messageIndex, ListView.Contain);
+        chatSearchSettle.restart();
+    }
+
+    // The delegate only knows where its match sits once it has been laid
+    // out, which is after positionViewAtIndex has created it.
+    Timer {
+        id: chatSearchSettle
+        interval: 60
+        onTriggered: {
+            const hit = root.chatSearchHit;
+            if (!hit) return;
+            const item = messageListView.itemAtIndex(hit.messageIndex);
+            if (!item || item.searchCurrentY < 0) return;
+            const wanted = item.y + item.searchCurrentY - messageListView.height / 2;
+            const lowest = messageListView.originY;
+            const highest = lowest + Math.max(0, messageListView.contentHeight - messageListView.height);
+            messageListView.contentY = Math.min(Math.max(wanted, lowest), highest);
+        }
+    }
+
     // Both pickers live in the same strip above the composer, so opening one
     // closes the other rather than stacking two panels over the input.
     function toggleEffortPicker() {
@@ -143,6 +234,11 @@ Item {
         // Ctrl+PageUp/PageDown already moves between the sidebar's own tabs, so
         // conversations move on Ctrl+Tab instead.
         if (event.modifiers & Qt.ControlModifier) {
+            if (event.key === Qt.Key_F) {
+                root.openChatSearch();
+                event.accepted = true;
+                return;
+            }
             if (event.key === Qt.Key_T) {
                 root.openTab();
                 event.accepted = true;
@@ -483,6 +579,99 @@ Item {
             }
         }
 
+        Revealer { // Find in chat
+            vertical: true
+            reveal: root.chatSearchShown
+
+            Rectangle {
+                width: mainColumn.width
+                implicitHeight: chatSearchRow.implicitHeight + 8
+                radius: Appearance.rounding.small
+                color: Appearance.colors.colLayer1
+
+                RowLayout {
+                    id: chatSearchRow
+                    anchors {
+                        fill: parent
+                        margins: 4
+                    }
+                    spacing: 4
+
+                    MaterialTextField {
+                        id: chatSearchField
+                        Layout.fillWidth: true
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        placeholderText: Translation.tr("Find in chat…")
+                        Keys.onPressed: event => {
+                            if (event.key === Qt.Key_Escape) {
+                                root.closeChatSearch();
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                                root.chatSearchStep(event.modifiers & Qt.ShiftModifier ? -1 : 1);
+                                event.accepted = true;
+                            }
+                        }
+                    }
+
+                    StyledText {
+                        visible: root.chatSearchQuery.length > 0
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        color: root.chatSearchHits.length > 0 ? Appearance.colors.colSubtext : Appearance.m3colors.m3error
+                        text: root.chatSearchHits.length > 0
+                            ? `${root.chatSearchCurrent + 1}/${root.chatSearchHits.length}`
+                            : "0/0"
+                    }
+
+                    Repeater {
+                        model: [
+                            { icon: "keyboard_arrow_up", step: -1, tip: Translation.tr("Previous match (Shift+Enter)") },
+                            { icon: "keyboard_arrow_down", step: 1, tip: Translation.tr("Next match (Enter)") }
+                        ]
+
+                        RippleButton {
+                            required property var modelData
+                            implicitWidth: 30
+                            implicitHeight: 30
+                            buttonRadius: Appearance.rounding.small
+                            enabled: root.chatSearchHits.length > 0
+                            onClicked: root.chatSearchStep(modelData.step)
+
+                            contentItem: MaterialSymbol {
+                                anchors.centerIn: parent
+                                horizontalAlignment: Text.AlignHCenter
+                                iconSize: Appearance.font.pixelSize.larger
+                                color: parent.enabled ? Appearance.colors.colOnLayer1 : Appearance.colors.colOnLayer1Inactive
+                                text: modelData.icon
+                            }
+
+                            StyledToolTip {
+                                text: modelData.tip
+                            }
+                        }
+                    }
+
+                    RippleButton {
+                        implicitWidth: 30
+                        implicitHeight: 30
+                        buttonRadius: Appearance.rounding.small
+                        onClicked: root.closeChatSearch()
+
+                        contentItem: MaterialSymbol {
+                            anchors.centerIn: parent
+                            horizontalAlignment: Text.AlignHCenter
+                            iconSize: Appearance.font.pixelSize.larger
+                            color: Appearance.colors.colOnLayer1
+                            text: "close"
+                        }
+
+                        StyledToolTip {
+                            text: Translation.tr("Close (Esc)")
+                        }
+                    }
+                }
+            }
+        }
+
         Item { // Messages
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -528,8 +717,12 @@ Item {
                     values: ClaudeCode.messageIDs
                 }
                 delegate: ClaudeMessage {
+                    id: messageDelegate
                     required property var modelData
+                    required property int index
                     messageData: ClaudeCode.messageByID[modelData]
+                    searchQuery: root.chatSearchQuery
+                    searchCurrent: root.chatSearchHit?.messageIndex === messageDelegate.index ? root.chatSearchHit.ordinal : -1
                 }
             }
 
@@ -893,7 +1086,7 @@ Item {
                                     event.accepted = true;
                                 } else if (event.key === Qt.Key_Enter || event.key === Qt.Key_Return) {
                                     if (event.modifiers & Qt.ShiftModifier) {
-                                        messageInputField.insert(messageInputField.cursorPosition, "\n");
+                                        root.insertNewline();
                                     } else if (root.slashSuggestions.length === 1) {
                                         // Exactly one match: complete it rather
                                         // than sending a half-typed command.
