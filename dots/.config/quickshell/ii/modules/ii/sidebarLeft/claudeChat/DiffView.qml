@@ -327,7 +327,7 @@ ColumnLayout {
     component ContextButton: RippleButton {
         id: contextButton
         property int hidden: 0
-        property string icon: "expand_less"
+        property string symbol: "expand_less"
         Layout.fillWidth: true
         visible: contextButton.hidden > 0
         implicitHeight: 20
@@ -340,7 +340,7 @@ ColumnLayout {
             MaterialSymbol {
                 iconSize: Appearance.font.pixelSize.small
                 color: Appearance.colors.colSubtext
-                text: contextButton.icon
+                text: contextButton.symbol
             }
             StyledText {
                 font.pixelSize: Appearance.font.pixelSize.smallest
@@ -570,7 +570,7 @@ ColumnLayout {
 
             ContextButton {
                 hidden: root.hiddenAbove
-                icon: "expand_less"
+                symbol: "expand_less"
                 onClicked: root.contextAbove += root.contextStep
             }
 
@@ -582,7 +582,7 @@ ColumnLayout {
 
             ContextButton {
                 hidden: root.hiddenBelow
-                icon: "expand_more"
+                symbol: "expand_more"
                 onClicked: root.contextBelow += root.contextStep
             }
 
