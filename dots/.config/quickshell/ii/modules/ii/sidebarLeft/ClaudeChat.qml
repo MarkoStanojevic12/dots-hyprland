@@ -51,6 +51,22 @@ Item {
     // numbered lists counting up. On an empty item it drops the marker
     // instead, which is how the list ends.
     readonly property var listItemPattern: /^(\s*)(?:(\d+)([.)])|([-*+]))(\s+)(\[[ xX]\]\s+)?(.*)$/
+
+    // Space right after a marker typed at the start of a line indents it, so
+    // "1. " reads as a list while it is being written. Three spaces is as far
+    // as markdown allows before the line turns into a code block.
+    readonly property string listIndent: "   "
+    function indentListMarker() {
+        const text = messageInputField.text;
+        const cursor = messageInputField.cursorPosition;
+        const lineStart = text.lastIndexOf("\n", cursor - 1) + 1;
+        const line = text.slice(lineStart, cursor);
+        if (!/^(?:\d+[.)]|[-*+])$/.test(line)) return false;
+        messageInputField.insert(lineStart, root.listIndent);
+        messageInputField.insert(messageInputField.cursorPosition, " ");
+        return true;
+    }
+
     function insertNewline() {
         const text = messageInputField.text;
         const cursor = messageInputField.cursorPosition;
@@ -85,9 +101,20 @@ Item {
     }
     property int chatSearchCurrent: 0
     readonly property var chatSearchHit: root.chatSearchHits[root.chatSearchCurrent] ?? null
+    // A new query starts from what is on screen, not from the top of the chat.
     onChatSearchQueryChanged: {
-        root.chatSearchCurrent = 0;
+        root.chatSearchCurrent = root.nearestChatSearchHit();
         root.chatSearchJump();
+    }
+
+    function nearestChatSearchHit() {
+        const hits = root.chatSearchHits;
+        if (hits.length === 0) return 0;
+        const top = messageListView.contentY;
+        let topIndex = messageListView.indexAt(0, top);
+        if (topIndex < 0) topIndex = messageListView.indexAt(0, top + messageListView.spacing + 1);
+        const first = hits.findIndex(hit => hit.messageIndex >= topIndex);
+        return first === -1 ? 0 : first;
     }
     onChatSearchHitsChanged: {
         if (root.chatSearchCurrent >= root.chatSearchHits.length) {
@@ -117,8 +144,30 @@ Item {
         const hit = root.chatSearchHit;
         if (!hit) return;
         messageListView.following = false;
-        messageListView.positionViewAtIndex(hit.messageIndex, ListView.Contain);
+        // A message far off-screen has no delegate yet, so nothing can say
+        // where its match is until the view has built it.
+        if (!root.chatSearchReveal()) messageListView.positionViewAtIndex(hit.messageIndex, ListView.Contain);
         chatSearchSettle.restart();
+    }
+
+    // Scrolls only when the current match is out of view, so stepping
+    // between neighbouring matches leaves the chat where it is. False when
+    // the delegate can't place the match yet.
+    function chatSearchReveal() {
+        const hit = root.chatSearchHit;
+        if (!hit) return true;
+        const item = messageListView.itemAtIndex(hit.messageIndex);
+        if (!item || item.searchCurrentY < 0) return false;
+        const y = item.y + item.searchCurrentY;
+        const margin = 48;
+        const top = messageListView.contentY;
+        const bottom = top + messageListView.height;
+        if (y >= top + margin && y + 24 <= bottom - margin) return true;
+        const wanted = y - messageListView.height / 2;
+        const lowest = messageListView.originY;
+        const highest = lowest + Math.max(0, messageListView.contentHeight - messageListView.height);
+        messageListView.contentY = Math.min(Math.max(wanted, lowest), highest);
+        return true;
     }
 
     // The delegate only knows where its match sits once it has been laid
@@ -126,16 +175,7 @@ Item {
     Timer {
         id: chatSearchSettle
         interval: 60
-        onTriggered: {
-            const hit = root.chatSearchHit;
-            if (!hit) return;
-            const item = messageListView.itemAtIndex(hit.messageIndex);
-            if (!item || item.searchCurrentY < 0) return;
-            const wanted = item.y + item.searchCurrentY - messageListView.height / 2;
-            const lowest = messageListView.originY;
-            const highest = lowest + Math.max(0, messageListView.contentHeight - messageListView.height);
-            messageListView.contentY = Math.min(Math.max(wanted, lowest), highest);
-        }
+        onTriggered: root.chatSearchReveal()
     }
 
     // Both pickers live in the same strip above the composer, so opening one
@@ -991,6 +1031,8 @@ Item {
                                 // Tab is the only one that completes a command.
                                 if (event.key === Qt.Key_Tab && event.modifiers === Qt.NoModifier && root.slashSuggestions.length > 0) {
                                     root.applySlashCommand(root.slashSuggestions[0]);
+                                    event.accepted = true;
+                                } else if (event.key === Qt.Key_Space && event.modifiers === Qt.NoModifier && root.indentListMarker()) {
                                     event.accepted = true;
                                 } else if (event.key === Qt.Key_Enter || event.key === Qt.Key_Return) {
                                     if (event.modifiers & Qt.ShiftModifier) {
