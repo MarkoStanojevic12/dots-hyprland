@@ -332,6 +332,50 @@ Singleton {
     }
 
     // ------------------------------------------------------------------
+    // Find in chat
+    // ------------------------------------------------------------------
+
+    // Counted from the model rather than the delegates, so messages scrolled
+    // out of the list still take part. The view numbers a message's matches
+    // in timeline order with the same two helpers, which is what keeps the
+    // ordinal it navigates by pointing at the right block.
+    function countMatches(text, query) {
+        const needle = String(query ?? "").toLowerCase();
+        if (!text || needle.length === 0) return 0;
+        const haystack = String(text).toLowerCase();
+        let count = 0;
+        let at = haystack.indexOf(needle);
+        while (at !== -1) {
+            count++;
+            at = haystack.indexOf(needle, at + needle.length);
+        }
+        return count;
+    }
+
+    function toolSearchText(call) {
+        const input = call?.input;
+        const fields = input && typeof input === "object"
+            ? Object.values(input).filter(value => typeof value === "string")
+            : [String(input ?? "")];
+        return [call?.name ?? "", call?.detail ?? "", ...fields].join("\n");
+    }
+
+    function isSearchableTool(call) {
+        return call?.name !== "__thought" && call?.name !== "AskUserQuestion";
+    }
+
+    function messageMatchTotal(message, query) {
+        let total = 0;
+        for (const block of StringUtils.splitMarkdownBlocks(message?.content ?? "")) {
+            total += root.countMatches(block.content, query);
+        }
+        for (const call of message?.toolCalls ?? []) {
+            if (root.isSearchableTool(call)) total += root.countMatches(root.toolSearchText(call), query);
+        }
+        return total;
+    }
+
+    // ------------------------------------------------------------------
     // Model and effort choices
     // ------------------------------------------------------------------
 
@@ -339,14 +383,16 @@ Singleton {
     // An empty alias means "whatever the CLI is configured to use".
     readonly property var availableModels: [
         { alias: "", name: Translation.tr("Default"), description: Translation.tr("Whatever `claude` is configured to use") },
-        { alias: "opus", name: "Opus", description: Translation.tr("Most capable") },
-        { alias: "opus[1m]", name: "Opus 1M", description: Translation.tr("Most capable, 1M context") },
-        { alias: "sonnet", name: "Sonnet", description: Translation.tr("Balanced") },
-        { alias: "sonnet[1m]", name: "Sonnet 1M", description: Translation.tr("Balanced, 1M context") },
-        { alias: "haiku", name: "Haiku", description: Translation.tr("Fastest, cheapest on your limit") },
-        { alias: "opusplan", name: "Opus plan", description: Translation.tr("Opus to plan, Sonnet to execute") },
-        { alias: "fable", name: "Fable", description: Translation.tr("Writing-focused") }
+        { alias: "opus", name: "Opus 5", description: Translation.tr("Strong all-rounder") },
+        { alias: "opus[1m]", name: "Opus 5 · 1M", description: Translation.tr("Strong all-rounder, 1M context") },
+        { alias: "sonnet", name: "Sonnet 5", description: Translation.tr("Balanced") },
+        { alias: "sonnet[1m]", name: "Sonnet 5 · 1M", description: Translation.tr("Balanced, 1M context") },
+        { alias: "haiku", name: "Haiku 4.5", description: Translation.tr("Fastest, cheapest on your limit") },
+        { alias: "opusplan", name: "Opus plan", description: Translation.tr("Opus 5 to plan, Sonnet 5 to execute") },
+        { alias: "fable", name: "Fable 5.1", description: Translation.tr("Most capable, heaviest on your limit") }
     ]
+    // The versions above are what the aliases resolve to today; the toolbar
+    // shows the id the CLI actually reports, so a silent bump still shows.
 
     // What --effort accepts. Empty leaves it to ~/.claude/settings.json,
     // which is where the global default lives.

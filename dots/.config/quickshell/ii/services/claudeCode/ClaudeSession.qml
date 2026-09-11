@@ -62,8 +62,10 @@ Scope {
         root.selectedModel = alias;
         root.rememberPreference("model", alias);
         // A fresh model may have a different window; let the fallback take
-        // over until the next result event reports the real one.
+        // over until the next result event reports the real one. The old id
+        // goes too, so the toolbar shows the choice rather than a stale id.
         root.contextLimit = 0;
+        root.modelName = "";
         if (claudeProcess.running) {
             // The CLI swaps models in place and keeps the conversation, so
             // there's nothing to restart or replay. Omitting `model` resets
@@ -945,7 +947,10 @@ Scope {
         const assistant = root.requireAssistant();
         if (!assistant) return;
 
-        if (message.model) assistant.model = message.model;
+        if (message.model) {
+            assistant.model = message.model;
+            root.modelName = message.model;
+        }
         root.updateContextTokens(message.usage);
 
         root.flushThought();

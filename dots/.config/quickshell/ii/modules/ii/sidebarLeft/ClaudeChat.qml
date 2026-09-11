@@ -1082,7 +1082,7 @@ Item {
                             StyledText {
                                 font.pixelSize: Appearance.font.pixelSize.smaller
                                 color: modelButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer2
-                                text: ClaudeCode.selectedModelName
+                                text: ClaudeCode.modelName.length > 0 ? ClaudeCode.modelName : ClaudeCode.selectedModelName
                             }
                             MaterialSymbol {
                                 iconSize: Appearance.font.pixelSize.normal
@@ -1093,8 +1093,8 @@ Item {
 
                         StyledToolTip {
                             text: ClaudeCode.modelName.length > 0
-                                ? Translation.tr("Model: %1").arg(ClaudeCode.modelName)
-                                : Translation.tr("Choose a model")
+                                ? Translation.tr("Selected: %1\nRunning as reported by the CLI: %2").arg(ClaudeCode.selectedModelName).arg(ClaudeCode.modelName)
+                                : Translation.tr("Selected: %1\nThe exact id shows once a turn has run").arg(ClaudeCode.selectedModelName)
                         }
                     }
 
