@@ -30,21 +30,53 @@ ColumnLayout {
     property int searchCurrent: -1
     signal currentMatchAt(real y)
 
-    // Whether the closing fence has arrived. Only a closed block gets a
-    // preview window, so it never opens on half a page.
+    // Whether the closing fence has arrived. html and qml only preview once
+    // it has, so nothing is rendered off half a page.
     property bool completed: true
-    readonly property var windowPreviewLangs: ["html", "htm", "xhtml", "svg", "qml"]
-    readonly property bool windowPreviewable: root.windowPreviewLangs.indexOf(String(root.segmentLang ?? "").toLowerCase()) !== -1
-    readonly property string previewBlockScript: Quickshell.shellPath("scripts/claude/preview-block.sh")
 
-    // A markdown block is the one case where the snippet is a document rather
-    // than something to run: what matters is how it will read once it lands
-    // wherever it's going, so it gets the compose-box treatment.
-    readonly property bool previewable: ["markdown", "md"].indexOf(String(root.segmentLang ?? "").toLowerCase()) !== -1
-    property bool showPreview: false
+    // Markdown is a document, so its preview is how it will read. html is
+    // rendered to a picture out of process (Quickshell can't host WebEngine)
+    // and qml is loaded straight into the chat.
+    readonly property string previewKind: {
+        const lang = String(root.segmentLang ?? "").toLowerCase();
+        if (lang === "markdown" || lang === "md") return "markdown";
+        if (lang === "qml") return "qml";
+        if (["html", "htm", "xhtml", "svg"].indexOf(lang) !== -1) return "html";
+        return "";
+    }
+    readonly property bool previewable: root.previewKind.length > 0
+    // html and qml open on the preview; markdown stays on its source.
+    property bool showPreview: root.previewKind === "qml" || root.previewKind === "html"
     // Editing is always done against the source — a preview that silently ate
     // keystrokes would be worse than no preview.
     readonly property bool previewing: root.previewable && root.showPreview && !root.editing
+        && (root.previewKind === "markdown" || root.completed)
+
+    readonly property string renderHtmlScript: Quickshell.shellPath("scripts/claude/render-html.sh")
+    readonly property string previewDir: `${Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"}/claude-preview`
+    // Keyed by content, so an unchanged block never renders twice.
+    readonly property string htmlPreviewPath: root.previewKind === "html" && root.completed
+        ? `${root.previewDir}/${Qt.md5(root.segmentContent)}.png` : ""
+    property string htmlPreviewReady: ""
+    property string htmlPreviewError: ""
+    onPreviewingChanged: root.renderHtmlIfNeeded()
+    onHtmlPreviewPathChanged: root.renderHtmlIfNeeded()
+    onWidthChanged: if (root.htmlPreviewReady.length === 0) root.renderHtmlIfNeeded()
+    function renderHtmlIfNeeded() {
+        if (!root.previewing || root.previewKind !== "html" || root.htmlPreviewPath.length === 0) return;
+        if (root.htmlPreviewReady === root.htmlPreviewPath || htmlRender.running || root.width <= 0) return;
+        root.htmlPreviewError = "";
+        htmlRender.running = true;
+    }
+
+    Process {
+        id: htmlRender
+        command: [root.renderHtmlScript, root.segmentContent, root.htmlPreviewPath, String(Math.max(200, Math.round(root.width - 20)))]
+        onExited: (exitCode, exitStatus) => {
+            if (exitCode === 0) root.htmlPreviewReady = root.htmlPreviewPath;
+            else root.htmlPreviewError = Translation.tr("Rendering failed (exit %1)").arg(exitCode);
+        }
+    }
 
     // Shell dialects we can hand straight to a terminal. Anything else (python,
     // qml, a diff) would need us to guess an interpreter, so it gets no button
@@ -129,27 +161,6 @@ ColumnLayout {
             Item { Layout.fillWidth: true }
 
             ButtonGroup {
-                AiMessageControlButton { // HTML and QML, in their own window
-                    id: previewWindowButton
-                    visible: root.windowPreviewable && root.completed
-                    buttonIcon: previewProcess.running ? "refresh" : "open_in_new"
-                    // Re-clicking replaces the window, so an edited block
-                    // shows up instead of a second stale copy.
-                    onClicked: {
-                        previewProcess.running = false;
-                        previewProcess.running = true;
-                    }
-
-                    Process {
-                        id: previewProcess
-                        command: [root.previewBlockScript, String(root.segmentLang ?? "").toLowerCase(), root.segmentContent]
-                    }
-                    StyledToolTip {
-                        text: previewProcess.running
-                            ? Translation.tr("Reload the preview window")
-                            : Translation.tr("Preview in a window")
-                    }
-                }
                 AiMessageControlButton {
                     id: runCodeButton
                     visible: root.runnable
@@ -447,18 +458,28 @@ ColumnLayout {
         }
     }
 
-    Loader { // The same renderer the chat's own prose goes through
+    Loader {
         Layout.fillWidth: true
         active: root.previewing
         visible: active
+        sourceComponent: root.previewKind === "markdown" ? markdownPreview
+            : root.previewKind === "qml" ? qmlPreview
+            : htmlPreview
+    }
 
-        sourceComponent: Rectangle {
+    component PreviewBox: Rectangle {
+        topLeftRadius: Appearance.rounding.unsharpen
+        topRightRadius: Appearance.rounding.unsharpen
+        bottomLeftRadius: root.codeBlockBackgroundRounding
+        bottomRightRadius: root.codeBlockBackgroundRounding
+        color: Appearance.colors.colLayer2
+    }
+
+    Component { // The same renderer the chat's own prose goes through
+        id: markdownPreview
+
+        PreviewBox {
             implicitHeight: previewColumnLayout.implicitHeight + 20
-            topLeftRadius: Appearance.rounding.unsharpen
-            topRightRadius: Appearance.rounding.unsharpen
-            bottomLeftRadius: root.codeBlockBackgroundRounding
-            bottomRightRadius: root.codeBlockBackgroundRounding
-            color: Appearance.colors.colLayer2
 
             ColumnLayout {
                 id: previewColumnLayout
@@ -480,6 +501,118 @@ ColumnLayout {
                     // The document is already whole by the time it can be
                     // previewed; the fade-in chunking is for streaming prose.
                     forceDisableChunkSplitting: true
+                }
+            }
+        }
+    }
+
+    Component { // Loaded into the shell itself, so it is live but unsandboxed
+        id: qmlPreview
+
+        PreviewBox {
+            id: qmlBox
+            property string error: ""
+            implicitHeight: (qmlBox.error.length > 0 ? qmlError.implicitHeight : qmlStage.implicitHeight) + 20
+
+            Item {
+                id: qmlStage
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    top: parent.top
+                    margins: 10
+                }
+                clip: true
+                property Item content: null
+                // A root that anchors to its parent would size itself from
+                // the stage and the stage from it, so it gets a fixed stage.
+                property bool anchored: false
+                readonly property real contentWidth: qmlStage.content ? Math.max(qmlStage.content.width, qmlStage.content.implicitWidth) : 0
+                readonly property real contentHeight: qmlStage.content ? Math.max(qmlStage.content.height, qmlStage.content.implicitHeight) : 0
+                // Shrunk to fit the column; never enlarged.
+                readonly property real factor: qmlStage.contentWidth > 0 ? Math.min(1, qmlStage.width / qmlStage.contentWidth) : 1
+                implicitHeight: qmlStage.anchored ? 320 : Math.max(24, qmlStage.contentHeight * qmlStage.factor)
+
+                Component.onCompleted: {
+                    try {
+                        const object = Qt.createQmlObject(root.segmentContent, qmlStage, `file://${root.previewDir}/block.qml`);
+                        qmlStage.anchored = !!(object.anchors?.fill || object.anchors?.centerIn || object.anchors?.top || object.anchors?.left);
+                        object.transformOrigin = Item.TopLeft;
+                        object.scale = Qt.binding(() => qmlStage.factor);
+                        qmlStage.content = object;
+                    } catch (e) {
+                        const errors = e.qmlErrors ?? [];
+                        qmlBox.error = errors.length > 0
+                            ? errors.map(err => `${err.lineNumber}:${err.columnNumber} ${err.message}`).join("\n")
+                            : String(e);
+                    }
+                }
+            }
+
+            StyledText {
+                id: qmlError
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    top: parent.top
+                    margins: 10
+                }
+                visible: qmlBox.error.length > 0
+                wrapMode: Text.Wrap
+                font.family: Appearance.font.family.monospace
+                font.pixelSize: Appearance.font.pixelSize.smaller
+                color: Appearance.m3colors.m3error
+                text: qmlBox.error
+            }
+        }
+    }
+
+    Component { // A picture of the page, rendered out of process
+        id: htmlPreview
+
+        PreviewBox {
+            id: htmlBox
+            readonly property bool ready: htmlImage.status === Image.Ready
+            implicitHeight: (htmlBox.ready ? htmlImage.height : htmlStatus.implicitHeight) + 20
+
+            Image {
+                id: htmlImage
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    top: parent.top
+                    margins: 10
+                }
+                visible: htmlBox.ready
+                source: root.htmlPreviewReady.length > 0 ? `file://${root.htmlPreviewReady}` : ""
+                cache: false
+                asynchronous: true
+                fillMode: Image.PreserveAspectFit
+                height: htmlImage.sourceSize.width > 0 ? htmlImage.width * htmlImage.sourceSize.height / htmlImage.sourceSize.width : 0
+            }
+
+            RowLayout {
+                id: htmlStatus
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    top: parent.top
+                    margins: 10
+                }
+                visible: !htmlBox.ready
+                spacing: 8
+
+                MaterialLoadingIndicator {
+                    visible: root.htmlPreviewError.length === 0
+                    implicitSize: 22
+                    loading: true
+                }
+                StyledText {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    color: root.htmlPreviewError.length > 0 ? Appearance.m3colors.m3error : Appearance.colors.colSubtext
+                    text: root.htmlPreviewError.length > 0 ? root.htmlPreviewError : Translation.tr("Rendering the page…")
                 }
             }
         }

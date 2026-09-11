@@ -6,8 +6,3 @@
 -- NOTE: class matching here is FULL-match, so the pattern must be anchored end to
 -- end (a bare prefix is silently ignored) -- hence the explicit .*$.
 hl.window_rule({match = {class = "^chrome-music\\.youtube\\.com__.*$"}, workspace = "8 silent"})
-
--- Code-block previews opened from the Claude sidebar (quickshell/ii/scripts/claude/preview-block.sh).
-hl.window_rule({match = {title = "^Claude preview$"}, float = true})
-hl.window_rule({match = {title = "^Claude preview$"}, center = true})
-hl.window_rule({match = {title = "^Claude preview$"}, size = {"(monitor_w*0.55)", "(monitor_h*0.70)"}})
