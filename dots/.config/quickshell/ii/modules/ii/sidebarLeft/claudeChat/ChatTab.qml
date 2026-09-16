@@ -1,6 +1,7 @@
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
+import qs.modules.common.functions
 import QtQuick
 import QtQuick.Layouts
 
@@ -10,14 +11,27 @@ import QtQuick.Layouts
  * The chip is labelled with the conversation title, same as the history list;
  * tabs on the same project would otherwise all read alike. The directory falls
  * back in only while the conversation hasn't started, and stays in the tooltip.
+ *
+ * Shaped like a browser tab: the current one is an accent surface with a
+ * rounded top and bottom corners that flare outwards into the strip's baseline
+ * bar. The bar is the same colour, so tab and bar are one shape and the current
+ * conversation runs straight into the chat below it rather than sitting on top
+ * of it. The others carry no fill at all until hovered.
  */
 RippleButton {
     id: root
 
     required property var session
     required property int tabIndex
+    // The strip's hovered tab, so the hairline can be dropped on both sides of
+    // it; a tab cannot see its neighbour's hover state on its own.
+    property int stripHoveredIndex: -1
+
+    signal hoverRequested(int hoveredTab, bool entered)
 
     readonly property bool current: root.session === ClaudeCode.active
+    readonly property bool previousCurrent: root.tabIndex > 0
+        && ClaudeCode.tabs[root.tabIndex - 1] === ClaudeCode.active
     readonly property bool needsInput: root.session?.needsInput ?? false
     readonly property bool busy: root.session?.busy ?? false
     readonly property bool unseen: root.session?.unseen ?? false
@@ -35,35 +49,108 @@ RippleButton {
     implicitHeight: 30
     buttonRadius: Appearance.rounding.verysmall
     toggled: root.current
-    // RippleButton leaves an untoggled button transparent, which puts an
-    // inactive tab straight on the strip with nothing to mark its edges.
-    colBackground: Appearance.colors.colSecondaryContainer
-    colBackgroundHover: Appearance.colors.colSecondaryContainerHover
-    colRipple: Appearance.colors.colSecondaryContainerActive
+    // The tab shape below is the whole of this button's fill; RippleButton's own
+    // background stays out of the way so it cannot square off the flared corners.
+    colBackground: "transparent"
+    colBackgroundHover: "transparent"
+    colBackgroundToggled: "transparent"
+    colBackgroundToggledHover: "transparent"
+    colRipple: Appearance.colors.colLayer1Active
+    colRippleToggled: Appearance.colors.colPrimaryContainerActive
     onClicked: ClaudeCode.activateTab(root.tabIndex)
     // Closing without switching to the tab first, the way a browser does it.
     middleClickAction: () => ClaudeCode.closeTab(root.tabIndex)
+    onHoveredChanged: root.hoverRequested(root.tabIndex, root.hovered)
 
-    // RippleButton rounds all four corners. The bottom two are filled back in
-    // so the tab runs into the strip's baseline instead of floating over it.
-    Rectangle {
+    Item { // The tab shape
+        id: tabShape
         z: -1
+        anchors.fill: parent
+
+        // How far the bottom corners flare out to either side. The strip leaves
+        // this much margin so the first and last tab's flares are not cut off.
+        readonly property int flare: Appearance.rounding.unsharpenmore
+
+        // Not readonly: a Behavior needs to be able to write the property it
+        // animates, binding or no binding.
+        // The accent container rather than a layer colour: layer 1 is an alpha
+        // overlay, so with the sidebar transparency up it left the current tab
+        // barely distinguishable from the rest. This one is opaque.
+        // Hover is a neutral wash, never the accent: an accent-tinted hover
+        // reads as "this tab is selected" while the pointer crosses the strip.
+        // The accent belongs to the active conversation and nothing else.
+        property color surface: root.current
+            ? Appearance.colors.colPrimaryContainer
+            : root.hovered ? ColorUtils.transparentize(Appearance.colors.colLayer1, 0.45)
+            : ColorUtils.transparentize(Appearance.colors.colLayer1, 1)
+
+        // A little of the accent proper at the top, so the current tab is not a
+        // flat slab. The bottom stays exactly the baseline's colour -- that is
+        // the edge the two have to meet at without a seam.
+        property color surfaceTop: root.current
+            ? ColorUtils.mix(Appearance.colors.colPrimary, tabShape.surface, 0.32)
+            : tabShape.surface
+
+        Behavior on surface {
+            animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+        }
+        Behavior on surfaceTop {
+            animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            topLeftRadius: Appearance.rounding.verysmall
+            topRightRadius: Appearance.rounding.verysmall
+            gradient: Gradient {
+                GradientStop { position: 0; color: tabShape.surfaceTop }
+                GradientStop { position: 1; color: tabShape.surface }
+            }
+        }
+
+        RoundCorner {
+            anchors {
+                right: parent.left
+                bottom: parent.bottom
+            }
+            implicitSize: tabShape.flare
+            corner: RoundCorner.CornerEnum.BottomRight
+            color: tabShape.surface
+        }
+
+        RoundCorner {
+            anchors {
+                left: parent.right
+                bottom: parent.bottom
+            }
+            implicitSize: tabShape.flare
+            corner: RoundCorner.CornerEnum.BottomLeft
+            color: tabShape.surface
+        }
+    }
+
+    Rectangle { // Hairline to the tab on the left
+        // Neither of the tabs it sits between may be filled: a line running into
+        // the side of a surface is the one thing the browsers all avoid.
+        visible: root.tabIndex > 0 && !root.current && !root.previousCurrent
+            && root.stripHoveredIndex !== root.tabIndex
+            && root.stripHoveredIndex !== root.tabIndex - 1
         anchors {
             left: parent.left
-            right: parent.right
-            bottom: parent.bottom
+            verticalCenter: parent.verticalCenter
         }
-        height: root.buttonRadius
-        color: root.buttonColor
+        width: 1
+        height: 16
+        color: Appearance.colors.colOutlineVariant
     }
 
     contentItem: RowLayout {
         anchors {
             fill: parent
-            leftMargin: 8
+            leftMargin: 10
             // The close button sits over the right edge, so the label has to
             // stop eliding before it reaches it.
-            rightMargin: closeButton.visible ? 22 : 8
+            rightMargin: closeButton.visible ? 22 : 10
         }
         spacing: 5
 
@@ -74,7 +161,7 @@ RippleButton {
             implicitHeight: 6
             radius: width / 2
             color: root.needsInput ? Appearance.m3colors.m3error
-                : root.busy ? (root.current ? Appearance.m3colors.m3onPrimary : Appearance.colors.colPrimary)
+                : root.busy ? Appearance.colors.colPrimary
                 : Appearance.m3colors.m3tertiary
 
             // A tab that is waiting on an answer is the one thing here that
@@ -93,9 +180,15 @@ RippleButton {
             Layout.fillWidth: true
             elide: Text.ElideRight
             font.pixelSize: Appearance.font.pixelSize.small * ClaudeCode.textScale
-            font.weight: root.current ? Font.Medium : Font.Normal
-            color: root.current ? Appearance.m3colors.m3onPrimary : Appearance.m3colors.m3onSecondaryContainer
+            font.weight: root.current ? Font.DemiBold : Font.Normal
+            color: root.current ? Appearance.colors.colOnPrimaryContainer
+                : root.hovered ? Appearance.colors.colOnLayer1
+                : Appearance.colors.colSubtext
             text: root.label
+
+            Behavior on color {
+                animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+            }
         }
     }
 
@@ -108,7 +201,7 @@ RippleButton {
         visible: root.current || root.hovered || closeArea.containsMouse
         anchors {
             right: parent.right
-            rightMargin: 5
+            rightMargin: 6
             verticalCenter: parent.verticalCenter
         }
         implicitWidth: 16
@@ -118,9 +211,7 @@ RippleButton {
             anchors.centerIn: parent
             iconSize: 14
             opacity: (root.current || closeArea.containsMouse) ? 1 : 0.6
-            color: root.current
-                ? Appearance.m3colors.m3onPrimary
-                : Appearance.m3colors.m3onSecondaryContainer
+            color: root.current ? Appearance.colors.colOnPrimaryContainer : Appearance.colors.colOnLayer1
             text: "close"
         }
 

@@ -707,17 +707,42 @@ Item {
         }
 
         Item { // Messages
+            id: messagesArea
             Layout.fillWidth: true
             Layout.fillHeight: true
-            // Sits on top of mainColumn's spacing, so the chat keeps the same
-            // distance from whatever is above it -- header or tab strip.
-            Layout.topMargin: 8
+
+            // Scrolled-past messages dissolve under the tab strip's baseline
+            // instead of being cut off by it. Only with the strip up: without
+            // it the chat has nothing above it to disappear behind.
+            readonly property int topFade: ClaudeCode.tabs.length > 1 ? 40 : 0
+            // Sits on top of mainColumn's spacing, so the chat keeps its
+            // distance from the header. With the tab strip up, the strip's
+            // baseline is what the chat hangs from instead: the spacing is
+            // cancelled out so the current tab runs straight into the messages.
+            Layout.topMargin: ClaudeCode.tabs.length > 1 ? -root.padding : 8
+
+            Behavior on Layout.topMargin {
+                animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
+            }
             layer.enabled: true
             layer.effect: OpacityMask {
+                // The mask is stretched over the item, so the fade has to be
+                // stated as a fraction of the height rather than in pixels.
                 maskSource: Rectangle {
-                    width: root.width
-                    height: root.height
+                    width: messagesArea.width
+                    height: messagesArea.height
                     radius: Appearance.rounding.small
+                    gradient: Gradient {
+                        GradientStop {
+                            position: 0
+                            color: messagesArea.topFade > 0 ? "transparent" : "white"
+                        }
+                        GradientStop {
+                            position: messagesArea.topFade / Math.max(1, messagesArea.height)
+                            color: "white"
+                        }
+                        GradientStop { position: 1; color: "white" }
+                    }
                 }
             }
 
