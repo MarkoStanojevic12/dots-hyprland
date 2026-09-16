@@ -1,4 +1,5 @@
 import qs.modules.common
+import qs.services
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -32,13 +33,13 @@ Item {
 
         MaterialSymbol {
             text: root.toolCall?.icon ?? "neurology"
-            iconSize: Appearance.font.pixelSize.large
+            iconSize: Appearance.font.pixelSize.large * ClaudeCode.textScale
             color: Appearance.colors.colSubtext
         }
 
         StyledText {
             Layout.fillWidth: true
-            font.pixelSize: Appearance.font.pixelSize.smaller
+            font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
             color: Appearance.colors.colSubtext
             elide: Text.ElideRight
             text: root.toolCall?.detail ?? ""

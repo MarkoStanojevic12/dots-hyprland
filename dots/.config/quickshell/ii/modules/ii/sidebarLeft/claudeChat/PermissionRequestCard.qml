@@ -39,14 +39,14 @@ Rectangle {
             spacing: 8
 
             MaterialSymbol {
-                iconSize: Appearance.font.pixelSize.larger
+                iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
                 color: Appearance.m3colors.m3onSecondaryContainer
                 text: "encrypted"
             }
             StyledText {
                 Layout.fillWidth: true
                 elide: Text.ElideRight
-                font.pixelSize: Appearance.font.pixelSize.small
+                font.pixelSize: Appearance.font.pixelSize.small * ClaudeCode.textScale
                 color: Appearance.m3colors.m3onSecondaryContainer
                 text: Translation.tr("Allow %1?").arg(root.request?.displayName ?? "")
             }
@@ -58,7 +58,7 @@ Rectangle {
             wrapMode: Text.Wrap
             maximumLineCount: 4
             elide: Text.ElideRight
-            font.pixelSize: Appearance.font.pixelSize.smaller
+            font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
             font.family: (root.command.length > 0 || root.filePath.length > 0)
                 ? Appearance.font.family.monospace
                 : Appearance.font.family.main
@@ -72,7 +72,7 @@ Rectangle {
             Layout.fillWidth: true
             visible: root.command.length > 0 && (root.request?.description ?? "").length > 0
             wrapMode: Text.Wrap
-            font.pixelSize: Appearance.font.pixelSize.smallest
+            font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
             color: Appearance.colors.colSubtext
             text: root.request?.description ?? ""
         }
@@ -92,7 +92,7 @@ Rectangle {
                     anchors.centerIn: parent
                     leftPadding: 12
                     rightPadding: 12
-                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                     color: Appearance.m3colors.m3onPrimary
                     text: Translation.tr("Allow")
                 }
@@ -108,7 +108,7 @@ Rectangle {
                     anchors.centerIn: parent
                     leftPadding: 12
                     rightPadding: 12
-                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                     color: Appearance.m3colors.m3onSecondaryContainer
                     text: Translation.tr("Always")
                 }
@@ -131,7 +131,7 @@ Rectangle {
                     anchors.centerIn: parent
                     leftPadding: 12
                     rightPadding: 12
-                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                     color: Appearance.m3colors.m3error
                     text: Translation.tr("Deny")
                 }

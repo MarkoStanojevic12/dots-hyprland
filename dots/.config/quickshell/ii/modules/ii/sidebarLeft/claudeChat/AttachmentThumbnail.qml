@@ -1,4 +1,5 @@
 import qs.modules.common
+import qs.services
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Effects
@@ -76,7 +77,7 @@ Rectangle {
         contentItem: MaterialSymbol {
             anchors.centerIn: parent
             horizontalAlignment: Text.AlignHCenter
-            iconSize: Appearance.font.pixelSize.normal
+            iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
             color: Appearance.colors.colOnSurfaceVariant
             text: "close"
         }

@@ -1,4 +1,5 @@
 import qs.modules.common
+import qs.services
 import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
@@ -41,7 +42,7 @@ RippleButton {
         spacing: 8
 
         MaterialSymbol {
-            iconSize: Appearance.font.pixelSize.larger
+            iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
             color: root.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colSubtext
             text: root.current ? "folder_open" : "folder"
         }
@@ -53,7 +54,7 @@ RippleButton {
             StyledText {
                 Layout.fillWidth: true
                 elide: Text.ElideRight
-                font.pixelSize: Appearance.font.pixelSize.smaller
+                font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                 font.weight: Font.DemiBold
                 color: root.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer1
                 text: root.folderName
@@ -63,7 +64,7 @@ RippleButton {
                 Layout.fillWidth: true
                 visible: root.parentPath.length > 0
                 elide: Text.ElideLeft
-                font.pixelSize: Appearance.font.pixelSize.smallest
+                font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                 color: root.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colSubtext
                 text: root.parentPath
             }
@@ -79,7 +80,7 @@ RippleButton {
             StyledText {
                 id: sessionsText
                 anchors.centerIn: parent
-                font.pixelSize: Appearance.font.pixelSize.smallest
+                font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                 color: root.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colSubtext
                 text: root.sessions
             }

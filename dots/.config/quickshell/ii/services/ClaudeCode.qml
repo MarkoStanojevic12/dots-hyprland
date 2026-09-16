@@ -28,6 +28,37 @@ Singleton {
     id: root
 
     readonly property var options: Config.options?.sidebar?.claude ?? null
+
+    // Ctrl+scroll zoom. It lives on the service rather than on the chat view so
+    // every component under claudeChat/ can read it without the scale being
+    // threaded through a dozen levels of delegate.
+    readonly property real textScale: root.options?.textScale ?? 1
+    readonly property real minTextScale: 0.7
+    readonly property real maxTextScale: 2.0
+    readonly property real textScaleStep: 0.05
+
+    // Resize animations fight the zoom: every chip and bubble eases to its new
+    // height a notch behind the wheel. Held for a moment past the last event so
+    // a burst of scrolling counts as one gesture.
+    property bool zooming: false
+    Timer {
+        id: zoomSettle
+        interval: 250
+        onTriggered: root.zooming = false
+    }
+
+    function zoomText(angleDelta) {
+        if (angleDelta === 0) return;
+        root.zooming = true;
+        zoomSettle.restart();
+        const next = root.textScale + (angleDelta > 0 ? root.textScaleStep : -root.textScaleStep);
+        Config.options.sidebar.claude.textScale =
+            Math.round(Math.max(root.minTextScale, Math.min(root.maxTextScale, next)) * 100) / 100;
+    }
+
+    function resetTextScale() {
+        Config.options.sidebar.claude.textScale = 1;
+    }
     readonly property bool enabled: options?.enable ?? true
 
     // ------------------------------------------------------------------

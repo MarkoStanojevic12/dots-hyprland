@@ -79,7 +79,7 @@ RippleButton {
         StyledText {
             Layout.fillWidth: true
             elide: Text.ElideRight
-            font.pixelSize: Appearance.font.pixelSize.small
+            font.pixelSize: Appearance.font.pixelSize.small * ClaudeCode.textScale
             font.weight: root.current ? Font.Medium : Font.Normal
             color: root.current ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer2
             text: root.label

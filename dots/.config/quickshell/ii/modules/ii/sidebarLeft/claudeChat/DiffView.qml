@@ -253,7 +253,7 @@ ColumnLayout {
     TextMetrics {
         id: metrics
         font.family: Appearance.font.family.monospace
-        font.pixelSize: Appearance.font.pixelSize.small
+        font.pixelSize: Appearance.font.pixelSize.small * ClaudeCode.textScale
         text: "0"
     }
 
@@ -279,26 +279,26 @@ ColumnLayout {
 
         StyledText {
             visible: root.addedCount > 0
-            font.pixelSize: Appearance.font.pixelSize.smallest
+            font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
             color: Appearance.colors.colPrimary
             text: `+${root.addedCount}`
         }
         StyledText {
             visible: root.removedCount > 0
-            font.pixelSize: Appearance.font.pixelSize.smallest
+            font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
             color: Appearance.m3colors.m3error
             text: `-${root.removedCount}`
         }
         StyledText {
             Layout.fillWidth: true
             elide: Text.ElideLeft
-            font.pixelSize: Appearance.font.pixelSize.smallest
+            font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
             color: Appearance.colors.colSubtext
             text: root.fileName
         }
         StyledText {
             visible: root.languageName.length > 0 && root.languageName !== "None"
-            font.pixelSize: Appearance.font.pixelSize.smallest
+            font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
             color: Appearance.colors.colSubtext
             text: root.languageName
         }
@@ -312,7 +312,7 @@ ColumnLayout {
             contentItem: MaterialSymbol {
                 anchors.centerIn: parent
                 horizontalAlignment: Text.AlignHCenter
-                iconSize: Appearance.font.pixelSize.normal
+                iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
                 color: Appearance.colors.colSubtext
                 text: root.split ? "view_agenda" : "vertical_split"
             }
@@ -338,12 +338,12 @@ ColumnLayout {
             spacing: 4
 
             MaterialSymbol {
-                iconSize: Appearance.font.pixelSize.small
+                iconSize: Appearance.font.pixelSize.small * ClaudeCode.textScale
                 color: Appearance.colors.colSubtext
                 text: contextButton.symbol
             }
             StyledText {
-                font.pixelSize: Appearance.font.pixelSize.smallest
+                font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                 color: Appearance.colors.colSubtext
                 text: Translation.tr("%1 more lines").arg(Math.min(root.contextStep, contextButton.hidden))
             }
@@ -402,7 +402,7 @@ ColumnLayout {
                             height: column.rowHeight
                             horizontalAlignment: Text.AlignRight
                             verticalAlignment: Text.AlignVCenter
-                            font.pixelSize: Appearance.font.pixelSize.small
+                            font.pixelSize: Appearance.font.pixelSize.small * ClaudeCode.textScale
                             font.family: Appearance.font.family.monospace
                             color: Appearance.colors.colSubtext
                             text: modelData[numberColumn.modelData] ?? ""
@@ -422,7 +422,7 @@ ColumnLayout {
                         width: metrics.advanceWidth
                         height: column.rowHeight
                         verticalAlignment: Text.AlignVCenter
-                        font.pixelSize: Appearance.font.pixelSize.small
+                        font.pixelSize: Appearance.font.pixelSize.small * ClaudeCode.textScale
                         font.family: Appearance.font.family.monospace
                         color: root.signColor(modelData.sign)
                         text: modelData.sign
@@ -494,7 +494,7 @@ ColumnLayout {
                     textFormat: TextEdit.PlainText
                     renderType: Text.NativeRendering
                     // Same size as the chat's code blocks, so both read alike.
-                    font.pixelSize: Appearance.font.pixelSize.small
+                    font.pixelSize: Appearance.font.pixelSize.small * ClaudeCode.textScale
                     font.family: Appearance.font.family.monospace
                     font.hintingPreference: Font.PreferNoHinting
                     color: Appearance.colors.colOnLayer1
@@ -560,7 +560,7 @@ ColumnLayout {
                         Layout.fillWidth: true
                         Layout.preferredWidth: 1
                         Layout.leftMargin: 4
-                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                         font.weight: Font.DemiBold
                         color: Appearance.colors.colSubtext
                         text: modelData
@@ -590,7 +590,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 Layout.topMargin: 2
                 visible: root.totalRows > root.shownLimit
-                font.pixelSize: Appearance.font.pixelSize.smallest
+                font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                 color: Appearance.colors.colSubtext
                 text: Translation.tr("…and %1 more lines").arg(root.totalRows - root.shownLimit)
             }

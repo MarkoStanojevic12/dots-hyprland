@@ -1,4 +1,5 @@
 import qs.modules.common
+import qs.services
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -43,6 +44,7 @@ Rectangle {
         animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
     }
     Behavior on implicitHeight {
+        enabled: !ClaudeCode.zooming
         animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
     }
 
@@ -71,12 +73,12 @@ Rectangle {
 
             MaterialSymbol {
                 text: root.errored ? "error" : (root.toolCall?.icon ?? "build")
-                iconSize: Appearance.font.pixelSize.large
+                iconSize: Appearance.font.pixelSize.large * ClaudeCode.textScale
                 color: root.errored ? Appearance.m3colors.m3onErrorContainer : Appearance.colors.colSubtext
             }
 
             StyledText {
-                font.pixelSize: Appearance.font.pixelSize.smaller
+                font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                 font.weight: Font.Medium
                 color: root.errored ? Appearance.m3colors.m3onErrorContainer : Appearance.colors.colOnLayer2
                 text: root.toolName
@@ -84,7 +86,7 @@ Rectangle {
 
             StyledText {
                 Layout.fillWidth: true
-                font.pixelSize: Appearance.font.pixelSize.smaller
+                font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                 font.family: Appearance.font.family.monospace
                 color: Appearance.colors.colSubtext
                 elide: Text.ElideRight
@@ -94,7 +96,7 @@ Rectangle {
 
             MaterialSymbol {
                 visible: root.expandable
-                iconSize: Appearance.font.pixelSize.normal
+                iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
                 color: Appearance.colors.colSubtext
                 text: root.expanded ? "expand_less" : "expand_more"
             }

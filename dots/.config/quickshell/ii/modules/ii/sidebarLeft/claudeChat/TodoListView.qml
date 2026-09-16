@@ -1,4 +1,5 @@
 import qs.modules.common
+import qs.services
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -30,7 +31,7 @@ ColumnLayout {
             spacing: 6
 
             MaterialSymbol {
-                iconSize: Appearance.font.pixelSize.normal
+                iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
                 color: todoRow.completed ? Appearance.colors.colPrimary
                     : todoRow.active ? Appearance.m3colors.m3onSecondaryContainer
                     : Appearance.colors.colSubtext
@@ -42,7 +43,7 @@ ColumnLayout {
             StyledText {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                font.pixelSize: Appearance.font.pixelSize.smaller
+                font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                 font.weight: todoRow.active ? Font.Medium : Font.Normal
                 // Finished items stay visible but stop asking for attention.
                 font.strikeout: todoRow.completed

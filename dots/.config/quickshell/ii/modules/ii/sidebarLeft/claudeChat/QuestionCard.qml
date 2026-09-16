@@ -105,6 +105,7 @@ Rectangle {
     clip: true
 
     Behavior on implicitHeight {
+        enabled: !ClaudeCode.zooming
         animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
     }
 
@@ -161,20 +162,20 @@ Rectangle {
 
                     MaterialSymbol {
                         visible: !root.tabbed
-                        iconSize: Appearance.font.pixelSize.larger
+                        iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
                         color: Appearance.m3colors.m3onSecondaryContainer
                         text: "help"
                     }
                     StyledText {
                         Layout.fillWidth: true
                         wrapMode: Text.Wrap
-                        font.pixelSize: Appearance.font.pixelSize.small
+                        font.pixelSize: Appearance.font.pixelSize.small * ClaudeCode.textScale
                         color: Appearance.m3colors.m3onSecondaryContainer
                         text: questionBlock.modelData.question ?? ""
                     }
                     StyledText {
                         visible: questionBlock.multiSelect
-                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                         color: Appearance.colors.colSubtext
                         text: Translation.tr("pick any")
                     }
@@ -204,7 +205,7 @@ Rectangle {
                             spacing: 8
 
                             MaterialSymbol {
-                                iconSize: Appearance.font.pixelSize.normal
+                                iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
                                 color: optionButton.chosen ? Appearance.m3colors.m3onPrimary : Appearance.colors.colSubtext
                                 text: questionBlock.multiSelect
                                     ? (optionButton.chosen ? "check_box" : "check_box_outline_blank")
@@ -219,7 +220,7 @@ Rectangle {
                                 StyledText {
                                     Layout.fillWidth: true
                                     wrapMode: Text.Wrap
-                                    font.pixelSize: Appearance.font.pixelSize.smaller
+                                    font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                                     color: optionButton.chosen ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer2
                                     text: optionButton.modelData.label ?? ""
                                 }
@@ -227,7 +228,7 @@ Rectangle {
                                     Layout.fillWidth: true
                                     visible: text.length > 0
                                     wrapMode: Text.Wrap
-                                    font.pixelSize: Appearance.font.pixelSize.smallest
+                                    font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                                     color: optionButton.chosen ? Appearance.m3colors.m3onPrimary : Appearance.colors.colSubtext
                                     text: optionButton.modelData.description ?? ""
                                 }
@@ -238,7 +239,7 @@ Rectangle {
 
                 MaterialTextField { // "Other" — anything the options don't cover
                     Layout.fillWidth: true
-                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                     placeholderText: Translation.tr("Something else…")
                     onTextChanged: root.setCustom(questionBlock.index, text)
                     onAccepted: root.complete ? root.submit() : root.advance()
@@ -253,7 +254,7 @@ Rectangle {
 
             StyledText {
                 visible: root.tabbed
-                font.pixelSize: Appearance.font.pixelSize.smallest
+                font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                 color: Appearance.colors.colSubtext
                 text: Translation.tr("%1 of %2 answered").arg(root.answeredCount).arg(root.questions.length)
             }
@@ -269,7 +270,7 @@ Rectangle {
                     anchors.centerIn: parent
                     leftPadding: 12
                     rightPadding: 12
-                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                     color: Appearance.colors.colSubtext
                     text: Translation.tr("Skip")
                 }
@@ -286,7 +287,7 @@ Rectangle {
                     anchors.centerIn: parent
                     leftPadding: 12
                     rightPadding: 12
-                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                     color: root.complete ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer2Disabled
                     text: Translation.tr("Answer")
                 }

@@ -1,4 +1,5 @@
 import qs.modules.common
+import qs.services
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -24,7 +25,7 @@ RippleButton {
         spacing: 8
 
         StyledText {
-            font.pixelSize: Appearance.font.pixelSize.smaller
+            font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
             font.family: Appearance.font.family.monospace
             color: Appearance.colors.colOnLayer1
             text: `/${root.command?.name ?? ""}`
@@ -32,7 +33,7 @@ RippleButton {
 
         StyledText {
             visible: text.length > 0
-            font.pixelSize: Appearance.font.pixelSize.smallest
+            font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
             font.family: Appearance.font.family.monospace
             color: Appearance.colors.colSubtext
             text: root.command?.argumentHint ?? ""
@@ -42,7 +43,7 @@ RippleButton {
             Layout.fillWidth: true
             horizontalAlignment: Text.AlignRight
             elide: Text.ElideRight
-            font.pixelSize: Appearance.font.pixelSize.smallest
+            font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
             color: Appearance.colors.colSubtext
             text: root.command?.description ?? ""
         }

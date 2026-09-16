@@ -100,14 +100,14 @@ Item {
                 spacing: 8
 
                 MaterialSymbol {
-                    iconSize: Appearance.font.pixelSize.larger
+                    iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
                     color: Appearance.m3colors.m3onSurface
                     text: "folder_open"
                 }
 
                 StyledText {
                     Layout.fillWidth: true
-                    font.pixelSize: Appearance.font.pixelSize.larger
+                    font.pixelSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
                     color: Appearance.m3colors.m3onSurface
                     text: Translation.tr("Working directory")
                 }
@@ -121,7 +121,7 @@ Item {
                     contentItem: MaterialSymbol {
                         anchors.centerIn: parent
                         horizontalAlignment: Text.AlignHCenter
-                        iconSize: Appearance.font.pixelSize.larger
+                        iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
                         color: Appearance.m3colors.m3onSurface
                         text: "close"
                     }
@@ -135,7 +135,7 @@ Item {
                 MaterialTextField {
                     id: directoryInput
                     Layout.fillWidth: true
-                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                     placeholderText: Translation.tr("Path to a directory…")
                     onAccepted: root.submit(directoryInput.text)
                     Keys.onPressed: event => {
@@ -155,7 +155,7 @@ Item {
                     contentItem: MaterialSymbol {
                         anchors.centerIn: parent
                         horizontalAlignment: Text.AlignHCenter
-                        iconSize: Appearance.font.pixelSize.larger
+                        iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
                         color: parent.enabled ? Appearance.colors.colOnLayer2 : Appearance.colors.colOnLayer2Disabled
                         text: "subdirectory_arrow_left"
                     }
@@ -167,7 +167,7 @@ Item {
                 Layout.leftMargin: 4
                 visible: ClaudeCode.directoryError.length > 0
                 wrapMode: Text.Wrap
-                font.pixelSize: Appearance.font.pixelSize.smallest
+                font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                 color: Appearance.m3colors.m3error
                 text: ClaudeCode.directoryError
             }
@@ -175,7 +175,7 @@ Item {
             StyledText {
                 Layout.fillWidth: true
                 Layout.leftMargin: 4
-                font.pixelSize: Appearance.font.pixelSize.smallest
+                font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                 color: Appearance.colors.colSubtext
                 text: Translation.tr("Somewhere Claude has already been used")
             }
@@ -217,7 +217,7 @@ Item {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.Wrap
                     visible: ClaudeCode.knownDirectories.length === 0
-                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                     color: Appearance.colors.colSubtext
                     text: ClaudeCode.directoriesLoading
                         ? Translation.tr("Looking for directories…")

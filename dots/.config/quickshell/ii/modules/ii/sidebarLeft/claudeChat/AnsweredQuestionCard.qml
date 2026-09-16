@@ -49,13 +49,13 @@ Rectangle {
             spacing: 6
 
             MaterialSymbol {
-                iconSize: Appearance.font.pixelSize.normal
+                iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
                 color: root.answered ? Appearance.colors.colPrimary : Appearance.colors.colSubtext
                 text: root.answered ? "task_alt" : "cancel"
             }
             StyledText {
                 Layout.fillWidth: true
-                font.pixelSize: Appearance.font.pixelSize.smallest
+                font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                 font.weight: Font.Medium
                 color: Appearance.colors.colSubtext
                 text: root.answered ? Translation.tr("YOU ANSWERED") : Translation.tr("NOT ANSWERED")
@@ -66,7 +66,7 @@ Rectangle {
             Layout.fillWidth: true
             visible: root.detailOnly
             wrapMode: Text.Wrap
-            font.pixelSize: Appearance.font.pixelSize.smaller
+            font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
             font.weight: Font.Medium
             color: Appearance.m3colors.m3onSecondaryContainer
             text: root.toolCall?.detail ?? ""
@@ -90,7 +90,7 @@ Rectangle {
                 StyledText {
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
-                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                     color: Appearance.colors.colSubtext
                     text: block.modelData.question ?? ""
                 }
@@ -112,7 +112,7 @@ Rectangle {
                             StyledText {
                                 id: pickText
                                 anchors.centerIn: parent
-                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                                 font.weight: Font.Medium
                                 color: Appearance.m3colors.m3onPrimary
                                 text: parent.modelData
@@ -124,7 +124,7 @@ Rectangle {
                 StyledText {
                     Layout.fillWidth: true
                     visible: block.picks.length === 0
-                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                     color: Appearance.colors.colSubtext
                     text: Translation.tr("Skipped")
                 }

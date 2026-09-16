@@ -1,4 +1,5 @@
 import qs.modules.common
+import qs.services
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
@@ -24,7 +25,7 @@ RippleButton {
         spacing: 8
 
         MaterialSymbol {
-            iconSize: Appearance.font.pixelSize.larger
+            iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
             color: Appearance.colors.colOnLayer1
             text: root.feature?.icon ?? "bolt"
         }
@@ -36,7 +37,7 @@ RippleButton {
             StyledText {
                 Layout.fillWidth: true
                 elide: Text.ElideRight
-                font.pixelSize: Appearance.font.pixelSize.smaller
+                font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                 color: Appearance.colors.colOnLayer1
                 text: root.feature?.title ?? ""
             }
@@ -44,7 +45,7 @@ RippleButton {
                 Layout.fillWidth: true
                 visible: text.length > 0
                 elide: Text.ElideRight
-                font.pixelSize: Appearance.font.pixelSize.smallest
+                font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                 color: Appearance.colors.colSubtext
                 text: root.feature?.description ?? ""
             }

@@ -345,21 +345,21 @@ Item {
                     spacing: 6
 
                     MaterialSymbol {
-                        iconSize: Appearance.font.pixelSize.larger
+                        iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
                         color: historyButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer1
                         text: "history"
                     }
                     StyledText {
                         Layout.fillWidth: true
                         elide: Text.ElideRight
-                        font.pixelSize: Appearance.font.pixelSize.small
+                        font.pixelSize: Appearance.font.pixelSize.small * ClaudeCode.textScale
                         color: historyButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer1
                         text: ClaudeCode.conversationTitle.length > 0
                             ? ClaudeCode.conversationTitle
                             : Translation.tr("New conversation")
                     }
                     MaterialSymbol {
-                        iconSize: Appearance.font.pixelSize.normal
+                        iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
                         color: historyButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colSubtext
                         text: root.historyShown ? "expand_less" : "expand_more"
                     }
@@ -381,7 +381,7 @@ Item {
                 contentItem: MaterialSymbol {
                     anchors.centerIn: parent
                     horizontalAlignment: Text.AlignHCenter
-                    iconSize: Appearance.font.pixelSize.larger
+                    iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
                     color: newTabButton.enabled ? Appearance.colors.colOnLayer1 : Appearance.colors.colOnLayer1Inactive
                     text: "add"
                 }
@@ -403,7 +403,7 @@ Item {
                 contentItem: MaterialSymbol {
                     anchors.centerIn: parent
                     horizontalAlignment: Text.AlignHCenter
-                    iconSize: Appearance.font.pixelSize.larger
+                    iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
                     color: parent.enabled ? Appearance.colors.colOnLayer1 : Appearance.colors.colOnLayer1Inactive
                     text: "add_comment"
                 }
@@ -445,7 +445,7 @@ Item {
                 contentItem: MaterialSymbol {
                     anchors.centerIn: parent
                     horizontalAlignment: Text.AlignHCenter
-                    iconSize: Appearance.font.pixelSize.larger
+                    iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
                     color: usefulFeaturesButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer1
                     text: "bolt"
                 }
@@ -534,7 +534,7 @@ Item {
                     MaterialTextField {
                         id: historySearch
                         Layout.fillWidth: true
-                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                         placeholderText: Translation.tr("Search conversations…")
                         Keys.onPressed: event => {
                             if (event.key !== Qt.Key_Escape) return;
@@ -575,7 +575,7 @@ Item {
                                     leftPadding: 8
                                     topPadding: historyEntry.index === 0 ? 2 : 8
                                     bottomPadding: 2
-                                    font.pixelSize: Appearance.font.pixelSize.smallest
+                                    font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                                     font.weight: Font.DemiBold
                                     color: Appearance.colors.colSubtext
                                     text: historyEntry.modelData?.category ?? ""
@@ -600,7 +600,7 @@ Item {
                             horizontalAlignment: Text.AlignHCenter
                             wrapMode: Text.Wrap
                             visible: root.matchingSessions.length === 0
-                            font.pixelSize: Appearance.font.pixelSize.smaller
+                            font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                             color: Appearance.colors.colSubtext
                             text: {
                                 if (ClaudeCode.sessionsLoading) return Translation.tr("Looking for past conversations…");
@@ -634,7 +634,7 @@ Item {
                     MaterialTextField {
                         id: chatSearchField
                         Layout.fillWidth: true
-                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                         placeholderText: Translation.tr("Find in chat…")
                         Keys.onPressed: event => {
                             if (event.key === Qt.Key_Escape) {
@@ -649,7 +649,7 @@ Item {
 
                     StyledText {
                         visible: root.chatSearchQuery.length > 0
-                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                         color: root.chatSearchHits.length > 0 ? Appearance.colors.colSubtext : Appearance.m3colors.m3error
                         text: root.chatSearchHits.length > 0
                             ? `${root.chatSearchCurrent + 1}/${root.chatSearchHits.length}`
@@ -673,7 +673,7 @@ Item {
                             contentItem: MaterialSymbol {
                                 anchors.centerIn: parent
                                 horizontalAlignment: Text.AlignHCenter
-                                iconSize: Appearance.font.pixelSize.larger
+                                iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
                                 color: parent.enabled ? Appearance.colors.colOnLayer1 : Appearance.colors.colOnLayer1Inactive
                                 text: modelData.icon
                             }
@@ -693,7 +693,7 @@ Item {
                         contentItem: MaterialSymbol {
                             anchors.centerIn: parent
                             horizontalAlignment: Text.AlignHCenter
-                            iconSize: Appearance.font.pixelSize.larger
+                            iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
                             color: Appearance.colors.colOnLayer1
                             text: "close"
                         }
@@ -809,6 +809,7 @@ Item {
             clip: true
 
             Behavior on implicitHeight {
+                enabled: !ClaudeCode.zooming
                 animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
             }
 
@@ -847,20 +848,20 @@ Item {
                             spacing: 6
 
                             MaterialSymbol {
-                                iconSize: Appearance.font.pixelSize.normal
+                                iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
                                 color: Appearance.colors.colSubtext
                                 text: "schedule_send"
                             }
                             MaterialSymbol {
                                 visible: (queuedItem.modelData.attachments ?? []).length > 0
-                                iconSize: Appearance.font.pixelSize.normal
+                                iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
                                 color: Appearance.colors.colSubtext
                                 text: "image"
                             }
                             StyledText {
                                 Layout.fillWidth: true
                                 elide: Text.ElideRight
-                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                                 color: Appearance.colors.colSubtext
                                 text: queuedItem.modelData.text
                             }
@@ -873,7 +874,7 @@ Item {
                                 contentItem: MaterialSymbol {
                                     anchors.centerIn: parent
                                     horizontalAlignment: Text.AlignHCenter
-                                    iconSize: Appearance.font.pixelSize.normal
+                                    iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
                                     color: Appearance.colors.colSubtext
                                     text: "close"
                                 }
@@ -1022,6 +1023,11 @@ Item {
                             wrapMode: TextArea.Wrap
                             padding: 8
                             background: null
+                            // Matches the prose in the chat above, size included,
+                            // so what you type looks like what comes back.
+                            font.family: Appearance.font.family.reading
+                            font.hintingPreference: Font.PreferNoHinting
+                            font.pixelSize: Config.options.sidebar.claude.fontSize * ClaudeCode.textScale
                             color: activeFocus ? Appearance.m3colors.m3onSurface : Appearance.m3colors.m3onSurfaceVariant
                             placeholderText: ClaudeCode.busy
                                 ? Translation.tr("Claude is working — type to queue")
@@ -1123,12 +1129,12 @@ Item {
                             spacing: 2
 
                             StyledText {
-                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                                 color: modelButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer2
                                 text: ClaudeCode.modelName.length > 0 ? ClaudeCode.modelName : ClaudeCode.selectedModelName
                             }
                             MaterialSymbol {
-                                iconSize: Appearance.font.pixelSize.normal
+                                iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
                                 color: modelButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colSubtext
                                 text: root.modelPickerShown ? "expand_less" : "expand_more"
                             }
@@ -1156,12 +1162,12 @@ Item {
                             spacing: 2
 
                             MaterialSymbol {
-                                iconSize: Appearance.font.pixelSize.normal
+                                iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
                                 color: effortButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colSubtext
                                 text: "psychology"
                             }
                             StyledText {
-                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                                 color: effortButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer2
                                 text: ClaudeCode.selectedEffortName
                             }
@@ -1192,14 +1198,14 @@ Item {
                             spacing: 4
 
                             MaterialSymbol {
-                                iconSize: Appearance.font.pixelSize.normal
+                                iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
                                 color: directoryButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colSubtext
                                 text: "folder"
                             }
                             StyledText {
                                 Layout.fillWidth: true
                                 elide: Text.ElideLeft
-                                font.pixelSize: Appearance.font.pixelSize.smaller
+                                font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                                 color: directoryButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colSubtext
                                 text: ClaudeCode.workingDirectory
                             }
@@ -1223,7 +1229,7 @@ Item {
                         contentItem: MaterialSymbol {
                             anchors.centerIn: parent
                             horizontalAlignment: Text.AlignHCenter
-                            iconSize: Appearance.font.pixelSize.large
+                            iconSize: Appearance.font.pixelSize.large * ClaudeCode.textScale
                             color: permissionButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.m3colors.m3error
                             text: ClaudeCode.askPermission ? "encrypted" : "no_encryption"
                         }
@@ -1238,7 +1244,7 @@ Item {
                     StyledText { // How long until the usage limit resets
                         visible: ClaudeCode.rateLimitResetText.length > 0
                             && ClaudeCode.rateLimit?.status !== "allowed"
-                        font.pixelSize: Appearance.font.pixelSize.smallest
+                        font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                         color: Appearance.m3colors.m3error
                         text: Translation.tr("limit resets in %1").arg(ClaudeCode.rateLimitResetText)
                     }
@@ -1252,7 +1258,7 @@ Item {
 
                         MaterialSymbol {
                             anchors.verticalCenter: parent.verticalCenter
-                            iconSize: Appearance.font.pixelSize.normal
+                            iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
                             color: Appearance.colors.colPrimary
                             text: "progress_activity"
 
@@ -1283,7 +1289,7 @@ Item {
 
                         MaterialSymbol {
                             anchors.verticalCenter: parent.verticalCenter
-                            iconSize: Appearance.font.pixelSize.normal
+                            iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
                             color: Appearance.colors.colPrimary
                             text: "monitoring"
 
@@ -1298,7 +1304,7 @@ Item {
 
                         StyledText {
                             anchors.verticalCenter: parent.verticalCenter
-                            font.pixelSize: Appearance.font.pixelSize.smallest
+                            font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                             color: Appearance.colors.colSubtext
                             text: backgroundIndicator.count
                         }
@@ -1370,6 +1376,32 @@ Item {
 
                 }
             }
+        }
+    }
+
+    // Ctrl+scroll zooms every text size in the tab, Ctrl+middle-click resets it.
+    // It has to sit over everything: the message list's own wheel MouseArea
+    // accepts each wheel event, so a handler on an ancestor never sees one.
+    // Anything without Ctrl held is passed straight through.
+    MouseArea {
+        anchors.fill: parent
+        z: 5000
+        acceptedButtons: Qt.MiddleButton
+
+        onWheel: wheelEvent => {
+            if (!(wheelEvent.modifiers & Qt.ControlModifier)) {
+                wheelEvent.accepted = false;
+                return;
+            }
+            ClaudeCode.zoomText(wheelEvent.angleDelta.y);
+        }
+
+        onPressed: mouse => {
+            if (!(mouse.modifiers & Qt.ControlModifier)) {
+                mouse.accepted = false;
+                return;
+            }
+            ClaudeCode.resetTextScale();
         }
     }
 

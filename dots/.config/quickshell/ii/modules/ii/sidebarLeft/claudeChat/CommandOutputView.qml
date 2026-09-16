@@ -40,7 +40,7 @@ ColumnLayout {
 
             StyledText {
                 Layout.alignment: Qt.AlignTop
-                font.pixelSize: Appearance.font.pixelSize.smallest
+                font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                 font.family: Appearance.font.family.monospace
                 color: Appearance.colors.colPrimary
                 text: "$"
@@ -49,7 +49,7 @@ ColumnLayout {
                 id: commandText
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                font.pixelSize: Appearance.font.pixelSize.smallest
+                font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                 font.family: Appearance.font.family.monospace
                 color: Appearance.colors.colOnLayer2
                 text: root.command
@@ -81,7 +81,7 @@ ColumnLayout {
             StyledText {
                 Layout.fillWidth: true
                 visible: root.running && root.lines.length === 0
-                font.pixelSize: Appearance.font.pixelSize.smallest
+                font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                 color: Appearance.colors.colSubtext
                 text: Translation.tr("running…")
             }
@@ -93,7 +93,7 @@ ColumnLayout {
                     required property string modelData
                     Layout.fillWidth: true
                     wrapMode: Text.Wrap
-                    font.pixelSize: Appearance.font.pixelSize.smallest
+                    font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                     font.family: Appearance.font.family.monospace
                     color: root.errored ? Appearance.m3colors.m3error : Appearance.colors.colSubtext
                     text: modelData
@@ -104,7 +104,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 Layout.topMargin: 2
                 visible: root.lines.length > root.shownLimit
-                font.pixelSize: Appearance.font.pixelSize.smallest
+                font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                 color: Appearance.colors.colSubtext
                 text: Translation.tr("…and %1 more lines").arg(root.lines.length - root.shownLimit)
             }
@@ -115,7 +115,7 @@ ColumnLayout {
         Layout.fillWidth: true
         Layout.leftMargin: 6
         visible: !root.running && root.lines.length === 0
-        font.pixelSize: Appearance.font.pixelSize.smallest
+        font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
         color: Appearance.colors.colSubtext
         text: Translation.tr("no output")
     }

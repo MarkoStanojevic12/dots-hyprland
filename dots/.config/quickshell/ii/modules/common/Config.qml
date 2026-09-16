@@ -596,6 +596,9 @@ Singleton {
                     // 13px UI font VS Code renders its own chat at; the shell's
                     // own scale (small = 15) reads large next to it.
                     property int fontSize: 14
+                    // Ctrl+scroll over the chat multiplies every text size in it,
+                    // prose and UI alike. Ctrl+middle-click puts it back to 1.
+                    property real textScale: 1
                     // Sound when Claude needs an answer here (a permission
                     // prompt or a question). The *finished* sound is not set
                     // here: the Stop hook in ~/.claude/settings.json fires for

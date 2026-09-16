@@ -166,7 +166,7 @@ Item {
                 MaterialSymbol {
                     anchors.centerIn: parent
                     visible: !speaker.photoShown
-                    iconSize: Appearance.font.pixelSize.larger
+                    iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
                     color: root.speakerColor
                     text: root.isUser ? "person" : root.isInterface ? "settings" : "neurology"
                 }
@@ -175,7 +175,7 @@ Item {
             StyledText {
                 Layout.fillWidth: true
                 elide: Text.ElideRight
-                font.pixelSize: Appearance.font.pixelSize.normal
+                font.pixelSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
                 // System usernames are typically lowercase; a speaker label
                 // reads better capitalised.
                 font.capitalization: Font.Capitalize
@@ -187,7 +187,7 @@ Item {
 
             StyledText { // Model, once the turn has actually started
                 visible: !root.isUser && !root.isInterface && (root.messageData?.model ?? "").length > 0
-                font.pixelSize: Appearance.font.pixelSize.smaller
+                font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                 color: Appearance.colors.colSubtext
                 text: root.messageData?.model ?? ""
             }
@@ -330,7 +330,7 @@ Item {
                         searchCurrent: root.searchCurrent
                         onCurrentMatchAt: y => root.searchCurrentY = textBlock.mapToItem(root, 0, y).y
                         enableMouseSelection: true
-                        bodyFontSize: Config.options.sidebar.claude.fontSize
+                        bodyFontSize: Config.options.sidebar.claude.fontSize * ClaudeCode.textScale
                         // Paths Claude mentions become links to the file itself.
                         segmentContent: ClaudeCode.linkifyPaths(modelData.content)
                         linkColor: Appearance.colors.colPrimary
@@ -360,14 +360,14 @@ Item {
 
             MaterialSymbol {
                 text: "link_off"
-                iconSize: Appearance.font.pixelSize.large
+                iconSize: Appearance.font.pixelSize.large * ClaudeCode.textScale
                 color: Appearance.colors.colSubtext
             }
 
             StyledText {
                 Layout.fillWidth: true
                 wrapMode: Text.Wrap
-                font.pixelSize: Appearance.font.pixelSize.smaller
+                font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                 color: Appearance.colors.colSubtext
                 text: Translation.tr("Interrupted — the shell reloaded.")
             }
@@ -386,7 +386,7 @@ Item {
                     anchors.centerIn: parent
                     leftPadding: 12
                     rightPadding: 12
-                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                     color: Appearance.m3colors.m3onPrimary
                     text: Translation.tr("Continue")
                 }
@@ -400,6 +400,7 @@ Item {
             visible: implicitHeight > 0
 
             Behavior on implicitHeight {
+                enabled: !ClaudeCode.zooming
                 animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
             }
 
@@ -422,7 +423,7 @@ Item {
                         // is only worth saying while thinking is all that has
                         // happened. Once there is prose, the spinner says enough.
                         visible: root.messageBlocks.length < 1 && (root.messageData?.thinkingTokens ?? 0) > 0
-                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                         color: Appearance.colors.colSubtext
                         text: Translation.tr("Thinking… ~%1 tokens").arg(root.messageData?.thinkingTokens ?? 0)
                     }

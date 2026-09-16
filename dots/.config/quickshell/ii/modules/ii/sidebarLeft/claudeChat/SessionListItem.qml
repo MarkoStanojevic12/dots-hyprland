@@ -33,14 +33,14 @@ RippleButton {
             StyledText {
                 Layout.fillWidth: true
                 elide: Text.ElideRight
-                font.pixelSize: Appearance.font.pixelSize.small
+                font.pixelSize: Appearance.font.pixelSize.small * ClaudeCode.textScale
                 color: root.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer2
                 text: root.session?.title ?? ""
             }
             StyledText {
                 Layout.fillWidth: true
                 elide: Text.ElideRight
-                font.pixelSize: Appearance.font.pixelSize.smallest
+                font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
                 color: root.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colSubtext
                 text: {
                     const turns = root.session?.turns ?? 0;
@@ -54,7 +54,7 @@ RippleButton {
 
         MaterialSymbol {
             visible: root.current
-            iconSize: Appearance.font.pixelSize.normal
+            iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
             color: Appearance.m3colors.m3onPrimary
             text: "check"
         }

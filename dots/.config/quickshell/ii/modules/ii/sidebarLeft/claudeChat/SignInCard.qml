@@ -33,14 +33,14 @@ Rectangle {
             spacing: 8
 
             MaterialSymbol {
-                iconSize: Appearance.font.pixelSize.larger
+                iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
                 color: Appearance.colors.colOnErrorContainer
                 text: "key_off"
             }
             StyledText {
                 Layout.fillWidth: true
                 elide: Text.ElideRight
-                font.pixelSize: Appearance.font.pixelSize.small
+                font.pixelSize: Appearance.font.pixelSize.small * ClaudeCode.textScale
                 color: Appearance.colors.colOnErrorContainer
                 text: Translation.tr("Your Claude session has expired")
             }
@@ -49,7 +49,7 @@ Rectangle {
         StyledText {
             Layout.fillWidth: true
             wrapMode: Text.Wrap
-            font.pixelSize: Appearance.font.pixelSize.smaller
+            font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
             color: Appearance.colors.colOnErrorContainer
             text: Translation.tr("Signing in opens a terminal and a browser. Come back here once it finishes.")
         }
@@ -69,7 +69,7 @@ Rectangle {
                     anchors.centerIn: parent
                     leftPadding: 12
                     rightPadding: 12
-                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                     color: Appearance.m3colors.m3onPrimary
                     text: Translation.tr("Sign in")
                 }
@@ -85,7 +85,7 @@ Rectangle {
                     anchors.centerIn: parent
                     leftPadding: 12
                     rightPadding: 12
-                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                     color: Appearance.colors.colOnErrorContainer
                     text: ClaudeCode.authChecking
                         ? Translation.tr("Checking…")
