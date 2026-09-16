@@ -32,17 +32,30 @@ RippleButton {
         return text.charAt(0).toUpperCase() + text.slice(1);
     }
 
-    implicitHeight: 28
+    implicitHeight: 30
     buttonRadius: Appearance.rounding.verysmall
     toggled: root.current
     // RippleButton leaves an untoggled button transparent, which puts an
-    // inactive tab straight on the sidebar with nothing to mark its edges.
-    colBackground: Appearance.colors.colLayer2
-    colBackgroundHover: Appearance.colors.colLayer2Hover
-    colRipple: Appearance.colors.colLayer2Active
+    // inactive tab straight on the strip with nothing to mark its edges.
+    colBackground: Appearance.colors.colSecondaryContainer
+    colBackgroundHover: Appearance.colors.colSecondaryContainerHover
+    colRipple: Appearance.colors.colSecondaryContainerActive
     onClicked: ClaudeCode.activateTab(root.tabIndex)
     // Closing without switching to the tab first, the way a browser does it.
     middleClickAction: () => ClaudeCode.closeTab(root.tabIndex)
+
+    // RippleButton rounds all four corners. The bottom two are filled back in
+    // so the tab runs into the strip's baseline instead of floating over it.
+    Rectangle {
+        z: -1
+        anchors {
+            left: parent.left
+            right: parent.right
+            bottom: parent.bottom
+        }
+        height: root.buttonRadius
+        color: root.buttonColor
+    }
 
     contentItem: RowLayout {
         anchors {
@@ -81,7 +94,7 @@ RippleButton {
             elide: Text.ElideRight
             font.pixelSize: Appearance.font.pixelSize.small * ClaudeCode.textScale
             font.weight: root.current ? Font.Medium : Font.Normal
-            color: root.current ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer2
+            color: root.current ? Appearance.m3colors.m3onPrimary : Appearance.m3colors.m3onSecondaryContainer
             text: root.label
         }
     }
@@ -104,9 +117,10 @@ RippleButton {
         MaterialSymbol {
             anchors.centerIn: parent
             iconSize: 14
+            opacity: (root.current || closeArea.containsMouse) ? 1 : 0.6
             color: root.current
                 ? Appearance.m3colors.m3onPrimary
-                : (closeArea.containsMouse ? Appearance.colors.colOnLayer2 : Appearance.colors.colSubtext)
+                : Appearance.m3colors.m3onSecondaryContainer
             text: "close"
         }
 
