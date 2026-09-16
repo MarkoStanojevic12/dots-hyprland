@@ -13,16 +13,81 @@ Scope {
 
     PanelWindow {
         id: panelWindow
-        visible: GlobalStates.sidebarRightOpen
+        // Hyprland draws a closing layer from a snapshot, and snapshots are
+        // never blurred -- so its own slide-out dropped the glass the instant
+        // the sidebar started to leave. The panel slides out here instead,
+        // while the surface is still mapped, and unmaps only once it is gone.
+        // Deliberately not bound to GlobalStates: a binding re-evaluates before
+        // the handler below runs, so the surface unmapped for an instant and
+        // Hyprland took its unblurred snapshot anyway.
+        visible: panelWindow.shown
+        property bool shown: false
+        property bool closing: false
+        property real slideOffset: 0
+        readonly property real hiddenOffset: panelWindow.width
+
+        Component.onCompleted: panelWindow.shown = GlobalStates.sidebarRightOpen
 
         function hide() {
             GlobalStates.sidebarRightOpen = false;
         }
 
+        // Hyprland's layer animations are off for this namespace (see
+        // hypr/hyprland/rules.lua). Its slide-out ran *after* this one, on the
+        // snapshot it takes at unmap, which brought the panel back for a moment
+        // before it finally went. Both directions live here now, keeping
+        // Hyprland's old timings: 270ms emphasizedDecel in, 240ms menu_accel out.
+        NumberAnimation {
+            id: openSlide
+            target: panelWindow
+            property: "slideOffset"
+            to: 0
+            duration: 270
+            easing.type: Easing.Bezier
+            easing.bezierCurve: [0.05, 0.7, 0.1, 1.0, 1, 1]
+        }
+
+        NumberAnimation {
+            id: closeSlide
+            target: panelWindow
+            property: "slideOffset"
+            duration: 240
+            easing.type: Easing.Bezier
+            easing.bezierCurve: [0.52, 0.03, 0.72, 0.08, 1, 1]
+            onFinished: {
+                panelWindow.closing = false;
+                panelWindow.shown = false;
+            }
+        }
+
+        Connections {
+            target: GlobalStates
+            function onSidebarRightOpenChanged() {
+                if (GlobalStates.sidebarRightOpen) {
+                    closeSlide.stop();
+                    panelWindow.closing = false;
+                    // Reopened mid-close it carries on from where it is; from a
+                    // standing start it comes in from off screen.
+                    if (!panelWindow.shown) {
+                        panelWindow.slideOffset = panelWindow.hiddenOffset;
+                        panelWindow.shown = true;
+                    }
+                    openSlide.restart();
+                } else if (panelWindow.shown) {
+                    openSlide.stop();
+                    GlobalFocusGrab.removeDismissable(panelWindow);
+                    closeSlide.to = panelWindow.hiddenOffset;
+                    panelWindow.closing = true;
+                    closeSlide.restart();
+                }
+            }
+        }
+
         exclusiveZone: 0
         implicitWidth: sidebarWidth
         WlrLayershell.namespace: "quickshell:sidebarRight"
-        WlrLayershell.keyboardFocus: GlobalStates.sidebarRightOpen ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
+        WlrLayershell.keyboardFocus: (GlobalStates.sidebarRightOpen && !panelWindow.closing)
+            ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
         color: "transparent"
 
         anchors {
@@ -47,7 +112,11 @@ Scope {
 
         Loader {
             id: sidebarContentLoader
-            active: GlobalStates.sidebarRightOpen || Config?.options.sidebar.keepRightSidebarLoaded
+            active: GlobalStates.sidebarRightOpen || panelWindow.closing
+                || Config?.options.sidebar.keepRightSidebarLoaded
+            // A translation rather than a margin: anchors.fill means a margin
+            // would squeeze the content instead of moving it.
+            transform: Translate { x: panelWindow.slideOffset }
             anchors {
                 fill: parent
                 margins: Appearance.sizes.hyprlandGapsOut

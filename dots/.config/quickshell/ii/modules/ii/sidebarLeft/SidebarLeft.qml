@@ -94,8 +94,77 @@ Scope { // Scope
         
         sourceComponent: PanelWindow { // Window
             id: panelWindow
-            visible: GlobalStates.sidebarLeftOpen
-            
+            // Hyprland draws a closing layer from a snapshot, and snapshots are
+            // never blurred -- so letting it play its own slide-out dropped the
+            // glass the instant the sidebar started to leave. The panel slides
+            // out here instead, while the surface is still mapped and still
+            // blurred, and the surface unmaps only once it is gone.
+            // Deliberately not bound to GlobalStates: a binding re-evaluates
+            // before the handler below runs, so the surface unmapped for an
+            // instant and Hyprland took its unblurred snapshot anyway.
+            visible: panelWindow.shown
+            property bool shown: false
+            property bool closing: false
+            property real slideOffset: 0
+            readonly property real hiddenOffset: -(sidebarLeftBackground.width + Appearance.sizes.hyprlandGapsOut * 2)
+
+            Component.onCompleted: panelWindow.shown = GlobalStates.sidebarLeftOpen
+
+            // Hyprland's layer animations are off for this namespace (see
+            // hypr/hyprland/rules.lua). Its slide-out ran *after* this one, on
+            // the snapshot it takes at unmap, which brought the panel back for
+            // a moment before it finally went. Both directions live here now,
+            // keeping Hyprland's old timings: 270ms emphasizedDecel in,
+            // 240ms menu_accel out.
+            NumberAnimation {
+                id: openSlide
+                target: panelWindow
+                property: "slideOffset"
+                to: 0
+                duration: 270
+                easing.type: Easing.Bezier
+                easing.bezierCurve: [0.05, 0.7, 0.1, 1.0, 1, 1]
+            }
+
+            NumberAnimation {
+                id: closeSlide
+                target: panelWindow
+                property: "slideOffset"
+                duration: 240
+                easing.type: Easing.Bezier
+                easing.bezierCurve: [0.52, 0.03, 0.72, 0.08, 1, 1]
+                onFinished: {
+                    panelWindow.closing = false;
+                    panelWindow.shown = false;
+                }
+            }
+
+            Connections {
+                target: GlobalStates
+                function onSidebarLeftOpenChanged() {
+                    if (GlobalStates.sidebarLeftOpen) {
+                        closeSlide.stop();
+                        panelWindow.closing = false;
+                        // Reopened mid-close it carries on from where it is;
+                        // from a standing start it comes in from off screen.
+                        if (!panelWindow.shown) {
+                            panelWindow.slideOffset = panelWindow.hiddenOffset;
+                            panelWindow.shown = true;
+                        }
+                        openSlide.restart();
+                    } else if (panelWindow.shown) {
+                        // The grab goes now, not when the surface finally
+                        // unmaps, or the next click lands on a panel that is
+                        // already on its way out.
+                        openSlide.stop();
+                        GlobalFocusGrab.removeDismissable(panelWindow);
+                        closeSlide.to = panelWindow.hiddenOffset;
+                        panelWindow.closing = true;
+                        closeSlide.restart();
+                    }
+                }
+            }
+
             property bool extend: false
             property bool resizing: false
             property real dragWidth: 0
@@ -116,14 +185,18 @@ Scope { // Scope
             }
 
             exclusionMode: ExclusionMode.Normal
-            exclusiveZone: root.pin ? sidebarWidth : 0
+            // Dropped as soon as the slide-out starts, so pinned windows begin
+            // reflowing at the same moment they did when the surface unmapped.
+            exclusiveZone: (root.pin && !panelWindow.closing) ? sidebarWidth : 0
             implicitWidth: Appearance.sizes.sidebarLeftMaxWidth + Appearance.sizes.elevationMargin
             WlrLayershell.namespace: "quickshell:sidebarLeft"
             // Hyprland 0.49: OnDemand is Exclusive, Exclusive just breaks click-outside-to-close
             // Which also means an open sidebar eats every keystroke, so anything
             // sending synthetic input elsewhere has to make it drop the keyboard
             // outright — focusing another window is not enough.
-            WlrLayershell.keyboardFocus: GlobalStates.sidebarLeftYieldKeyboard
+            // Focus is let go the moment it starts closing: a surface that is
+            // only still mapped for its animation must not eat keystrokes.
+            WlrLayershell.keyboardFocus: (GlobalStates.sidebarLeftYieldKeyboard || panelWindow.closing)
                 ? WlrKeyboardFocus.None : WlrKeyboardFocus.OnDemand
             color: "transparent"
 
@@ -179,7 +252,9 @@ Scope { // Scope
                 anchors.top: parent.top
                 anchors.left: parent.left
                 anchors.topMargin: Appearance.sizes.hyprlandGapsOut
-                anchors.leftMargin: Appearance.sizes.hyprlandGapsOut
+                // The margin, not x: the shadow is anchored to this rectangle
+                // and has to travel with it.
+                anchors.leftMargin: Appearance.sizes.hyprlandGapsOut + panelWindow.slideOffset
                 width: panelWindow.sidebarWidth - Appearance.sizes.hyprlandGapsOut - Appearance.sizes.elevationMargin
                 height: parent.height - Appearance.sizes.hyprlandGapsOut * 2
                 // Only the layer-shell panel: the detached window is a normal

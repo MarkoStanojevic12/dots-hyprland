@@ -153,8 +153,14 @@ hl.layer_rule({ match = { namespace = "quickshell:screenshot" }, no_anim = true}
 hl.layer_rule({ match = { namespace = "quickshell:session" }, blur = true})
 hl.layer_rule({ match = { namespace = "quickshell:session" }, no_anim = true})
 hl.layer_rule({ match = { namespace = "quickshell:session" }, ignore_alpha = 0})
-hl.layer_rule({ match = { namespace = "quickshell:sidebarRight" }, animation = "slide right"})
-hl.layer_rule({ match = { namespace = "quickshell:sidebarLeft" }, animation = "slide left"})
+-- The sidebars animate themselves, in QML. Hyprland draws a closing layer from
+-- a snapshot, and snapshots are never blurred, so its slide-out dropped the
+-- glass the instant a sidebar began to leave -- and once the panel slid itself
+-- out first, Hyprland's animation ran afterwards on that snapshot and brought
+-- it back for a moment. The QML side keeps the timings these rules had:
+-- 270ms emphasizedDecel in, 240ms menu_accel out.
+hl.layer_rule({ match = { namespace = "quickshell:sidebarRight" }, no_anim = true})
+hl.layer_rule({ match = { namespace = "quickshell:sidebarLeft" }, no_anim = true})
 -- The sidebar transparency slider takes these backgrounds below the generic 0.79
 -- threshold above, which would skip the blur entirely. The margins around the
 -- panels are alpha 0, so a floor just above zero blurs them but not the gaps.
