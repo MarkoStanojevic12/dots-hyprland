@@ -1005,19 +1005,20 @@ Item {
                     Layout.fillWidth: true
                     spacing: 0
 
-                    ScrollView {
+                    // TextArea.flickable, rather than a ScrollView: inside one the
+                    // field's width comes from the text it already holds, so it
+                    // wraps at an arbitrary width and drags the sidebar's own
+                    // implicit width along with it. Here the width is the
+                    // viewport's, and Qt keeps the caret scrolled into view.
+                    Flickable {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: Math.min(root.height * 2 / 5, messageInputField.height)
+                        Layout.preferredHeight: Math.min(root.height * 2 / 5, messageInputField.implicitHeight)
                         clip: true
-                        // Without this the flickable's content is only as wide as
-                        // the text itself, so an empty field is click-to-focus
-                        // over the placeholder alone.
-                        contentWidth: availableWidth
-                        ScrollBar.vertical.policy: ScrollBar.AsNeeded
+                        boundsBehavior: Flickable.StopAtBounds
+                        ScrollBar.vertical: StyledScrollBar {}
 
-                        StyledTextArea {
+                        TextArea.flickable: StyledTextArea {
                             id: messageInputField
-                            anchors.fill: parent
                             wrapMode: TextArea.Wrap
                             padding: 8
                             background: null
@@ -1322,6 +1323,17 @@ Item {
                     Item { // Context window usage
                         id: contextIndicator
                         property bool hovered: contextMouseArea.containsMouse
+                        // Auto-compaction fires well before the model window is
+                        // full, and every call past it pays ~5s extra latency,
+                        // so the ring tracks that limit rather than the model's.
+                        readonly property int compactLimit: {
+                            const configured = Config.options?.sidebar?.claude?.autoCompactTokens ?? 0;
+                            const modelLimit = ClaudeCode.effectiveContextLimit;
+                            return configured > 0 && (modelLimit <= 0 || configured < modelLimit) ? configured : modelLimit;
+                        }
+                        readonly property real compactFraction: compactLimit > 0
+                            ? Math.min(1, ClaudeCode.contextTokens / compactLimit)
+                            : 0
                         implicitWidth: 24
                         implicitHeight: 24
                         opacity: ClaudeCode.contextTokens > 0 ? 1 : 0
@@ -1334,10 +1346,8 @@ Item {
                             anchors.centerIn: parent
                             implicitSize: 20
                             lineWidth: 3
-                            value: ClaudeCode.contextFraction
-                            // Turn warm once the window is nearly full, since
-                            // that is when compaction starts eating the history.
-                            colPrimary: ClaudeCode.contextFraction > 0.85
+                            value: contextIndicator.compactFraction
+                            colPrimary: contextIndicator.compactFraction > 0.85
                                 ? Appearance.m3colors.m3error
                                 : Appearance.colors.colOnLayer2
                             colSecondary: Appearance.colors.colLayer2Hover
@@ -1350,10 +1360,11 @@ Item {
                         }
 
                         StyledToolTip {
-                            text: Translation.tr("Context: %1 / %2 (%3%)")
+                            text: Translation.tr("Context: %1 / %2 until auto-compact (%3%)\nModel window: %4")
                                 .arg(ClaudeCode.formatTokens(ClaudeCode.contextTokens))
+                                .arg(ClaudeCode.formatTokens(contextIndicator.compactLimit))
+                                .arg(Math.round(contextIndicator.compactFraction * 100))
                                 .arg(ClaudeCode.formatTokens(ClaudeCode.effectiveContextLimit))
-                                .arg(Math.round(ClaudeCode.contextFraction * 100))
                         }
                     }
 

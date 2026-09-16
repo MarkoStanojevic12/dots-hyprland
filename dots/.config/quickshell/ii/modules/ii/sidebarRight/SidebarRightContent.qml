@@ -1,6 +1,7 @@
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Controls
@@ -53,7 +54,10 @@ Item {
         anchors.fill: parent
         implicitHeight: parent.height - Appearance.sizes.hyprlandGapsOut * 2
         implicitWidth: sidebarWidth - Appearance.sizes.hyprlandGapsOut * 2
-        color: Appearance.colors.colLayer0
+        // Built from the opaque base rather than colLayer0, so the sidebar
+        // transparency slider is the only thing deciding this panel's alpha
+        // even when the shell-wide appearance.transparency is on.
+        color: ColorUtils.transparentize(Appearance.colors.colLayer0Base, Config.options.sidebar.transparency)
         border.width: 1
         border.color: Appearance.colors.colLayer0Border
         radius: Appearance.rounding.screenRounding - Appearance.sizes.hyprlandGapsOut + 1

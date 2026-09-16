@@ -578,6 +578,11 @@ Singleton {
                 // bottom of the right sidebar. The week view is the reason this
                 // is generous -- seven days of events need the room.
                 property int bottomGroupHeight: 560
+                // Glass look for both sidebars: 0 is opaque, higher values let
+                // Hyprland's layer blur show through. Layer 1/2 surfaces inside are
+                // already alpha overlays, so they follow along. Deliberately separate
+                // from appearance.transparency, which applies to the whole shell.
+                property real transparency: 0
                 property JsonObject translator: JsonObject {
                     property bool enable: false
                     property int delay: 300 // Delay before sending request. Reduces (potential) rate limits and lag.
@@ -621,6 +626,10 @@ Singleton {
                     // still has to be authenticated once from a terminal
                     // (`claude`, then /mcp).
                     property string mcpConfigPath: ""
+                    // Mirrors CLAUDE_CODE_AUTO_COMPACT_WINDOW from ~/.claude/settings.json
+                    // so the context ring measures against the point where
+                    // the CLI compacts, not the model's full window. 0 = model window.
+                    property int autoCompactTokens: 200000
                     property string systemPrompt: "You are running in a desktop sidebar panel on Hyprland, in a column roughly 500px wide. Keep responses short and scannable — the user is reading them in a narrow column, not a terminal. Lead with the answer, skip preamble, and don't recap what you just did unless asked."
                 }
                 property JsonObject booru: JsonObject {

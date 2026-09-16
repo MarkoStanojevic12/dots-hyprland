@@ -155,6 +155,13 @@ hl.layer_rule({ match = { namespace = "quickshell:session" }, no_anim = true})
 hl.layer_rule({ match = { namespace = "quickshell:session" }, ignore_alpha = 0})
 hl.layer_rule({ match = { namespace = "quickshell:sidebarRight" }, animation = "slide right"})
 hl.layer_rule({ match = { namespace = "quickshell:sidebarLeft" }, animation = "slide left"})
+-- The sidebar transparency slider takes these backgrounds below the generic 0.79
+-- threshold above, which would skip the blur entirely. The margins around the
+-- panels are alpha 0, so a floor just above zero blurs them but not the gaps.
+-- xray, on globally, samples only the wallpaper and would show it even where a
+-- window is behind; the sidebars should be glass over what is actually there.
+hl.layer_rule({ match = { namespace = "quickshell:sidebar.*" }, ignore_alpha = 0.05})
+hl.layer_rule({ match = { namespace = "quickshell:sidebar.*" }, xray = false})
 hl.layer_rule({ match = { namespace = "quickshell:verticalBar" }, animation = "slide"})
 hl.layer_rule({ match = { namespace = "quickshell:osk" }, order = -1})
 -- Quickshell: waffles

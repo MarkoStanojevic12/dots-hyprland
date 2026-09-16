@@ -1,6 +1,7 @@
 import qs
 import qs.services
 import qs.modules.common
+import qs.modules.common.functions
 import qs.modules.common.widgets
 import QtQuick
 import Quickshell.Io
@@ -181,7 +182,13 @@ Scope { // Scope
                 anchors.leftMargin: Appearance.sizes.hyprlandGapsOut
                 width: panelWindow.sidebarWidth - Appearance.sizes.hyprlandGapsOut - Appearance.sizes.elevationMargin
                 height: parent.height - Appearance.sizes.hyprlandGapsOut * 2
-                color: Appearance.colors.colLayer0
+                // Only the layer-shell panel: the detached window is a normal
+                // window, and Hyprland blurs no windows here, so letting it go
+                // see-through would just show the raw desktop.
+                // Built from the opaque base rather than colLayer0, so the slider
+                // is the only thing deciding this panel's alpha even when the
+                // shell-wide appearance.transparency is on.
+                color: ColorUtils.transparentize(Appearance.colors.colLayer0Base, Config.options.sidebar.transparency)
                 border.width: 1
                 border.color: Appearance.colors.colLayer0Border
                 radius: Appearance.rounding.screenRounding - Appearance.sizes.hyprlandGapsOut + 1

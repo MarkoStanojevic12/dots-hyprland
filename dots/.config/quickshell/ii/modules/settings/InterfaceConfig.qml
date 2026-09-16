@@ -478,6 +478,19 @@ ContentPage {
         icon: "side_navigation"
         title: Translation.tr("Sidebars")
 
+        ConfigSlider {
+            text: Translation.tr("Transparency")
+            buttonIcon: "blur_on"
+            usePercentTooltip: false
+            from: 0
+            to: 90
+            stopIndicatorValues: [0]
+            value: Config.options.sidebar.transparency * 100
+            onValueChanged: {
+                Config.options.sidebar.transparency = value / 100;
+            }
+        }
+
         ConfigSwitch {
             buttonIcon: "memory"
             text: Translation.tr('Keep right sidebar loaded')
