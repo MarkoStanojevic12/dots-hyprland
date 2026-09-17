@@ -2,8 +2,9 @@
 # Dictation for the Claude sidebar composer.
 #
 #   record <file> [endpoint]      — record the default source until killed,
-#                                   printing live previews as they arrive
+#                                   printing as it goes
 #                                     partial <text so far>
+#                                     final <transcript>   (and deletes <file>)
 #   transcribe <file> [endpoint]  — send it off and print one of
 #                                     text\n<transcript>
 #                                     error\n<what went wrong>
@@ -12,9 +13,10 @@
 # wav killed mid-write keeps the placeholder length in its header. pw-record
 # and not parec — parec drops its whole buffer when it is sent SIGTERM.
 #
-# The previews come from /stream on the same server. They are a best effort: if
-# the server is old or busy the loop goes quiet and recording is unaffected,
-# because the transcript still comes from the one final /transcribe pass.
+# The transcript comes from /stream on the same server, so stopping is as fast
+# as decoding the last second or so. If streaming is unavailable no `final` is
+# printed and the recording is left behind for the caller to send to
+# /transcribe instead.
 
 set -uo pipefail
 
@@ -56,7 +58,20 @@ record)
             offset=$size
             [ -n "${text//[[:space:]]/}" ] && printf 'partial %s\n' "$text"
         done
-        curl -sS --max-time 5 -X POST "$stream/end?id=$session" >/dev/null 2>&1
+
+        # Hand over the audio recorded since the last preview and take the
+        # streamed transcript as the result: it is already as good as the
+        # previews, and a second full pass costs seconds for the same words.
+        size=$(stat -c%s "$file" 2>/dev/null || echo 0)
+        final=$(tail -c "+$((offset + 1))" "$file" | head -c "$((size - offset))" |
+            curl -sS --max-time 60 -X POST \
+                -H 'Content-Type: application/octet-stream' \
+                --data-binary @- "$stream/end?id=$session" 2>/dev/null | tr '\n' ' ')
+        if [ -n "${final//[[:space:]]/}" ]; then
+            printf 'final %s\n' "$final"
+            rm -f "$file"
+        fi
+        # Nothing streamed back: leave the recording for the one-shot pass.
     else
         wait "$recorder" 2>/dev/null
     fi

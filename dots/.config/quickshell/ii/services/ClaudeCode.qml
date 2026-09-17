@@ -298,21 +298,51 @@ Singleton {
         recordProcess.running = true;
     }
 
+    // Shared by both paths below: the streamed result and the one-shot pass
+    // land in the composer the same way.
+    function insertDictation(target, body) {
+        root.dictationPartial = "";
+        if (!target || body.length === 0) return;
+        if (target.selectionStart !== target.selectionEnd) {
+            target.remove(target.selectionStart, target.selectionEnd);
+        }
+        // Dictating twice in a row should read as two sentences rather than
+        // one run-on word.
+        const before = target.text.slice(0, target.cursorPosition);
+        const separator = (before.length > 0 && !/\s$/.test(before)) ? " " : "";
+        target.insert(target.cursorPosition, separator + body);
+        target.forceActiveFocus();
+    }
+
     Process {
         id: recordProcess
         property var field: null
         property string path: ""
+        property string finalText: ""
 
         stdout: SplitParser {
             onRead: data => {
                 if (data.startsWith("partial "))
                     root.dictationPartial = data.slice(8).trim();
+                else if (data.startsWith("final "))
+                    recordProcess.finalText = data.slice(6).trim();
             }
         }
 
         onExited: {
             root.dictating = false;
             if (recordProcess.path.length === 0) return;
+
+            const streamed = recordProcess.finalText;
+            recordProcess.finalText = "";
+            if (streamed.length > 0) {
+                recordProcess.path = "";
+                root.insertDictation(recordProcess.field, streamed);
+                return;
+            }
+
+            // Streaming was unavailable, so the recording is still on disk and
+            // the one-shot pass is the only way to get the words out of it.
             transcribeProcess.field = recordProcess.field;
             transcribeProcess.command = ["bash", root.dictateScript, "transcribe", recordProcess.path, root.dictationEndpoint];
             recordProcess.path = "";
@@ -343,17 +373,7 @@ Singleton {
                     return;
                 }
 
-                const target = transcribeProcess.field;
-                if (!target) return;
-                if (target.selectionStart !== target.selectionEnd) {
-                    target.remove(target.selectionStart, target.selectionEnd);
-                }
-                // Dictating twice in a row should read as two sentences rather
-                // than one run-on word.
-                const before = target.text.slice(0, target.cursorPosition);
-                const separator = (before.length > 0 && !/\s$/.test(before)) ? " " : "";
-                target.insert(target.cursorPosition, separator + body);
-                target.forceActiveFocus();
+                root.insertDictation(transcribeProcess.field, body);
             }
         }
     }
