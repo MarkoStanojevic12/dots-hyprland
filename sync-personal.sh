@@ -15,6 +15,13 @@ rsync -a --delete \
   --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.new' \
   "$CFG/quickshell/ii/" "$DST/quickshell/ii/"
 
+# Local whisper dictation service behind the Claude sidebar's mic button. The
+# systemd unit is deliberately not synced: it carries the vocabulary hint, and
+# that names the projects I work on.
+rsync -a --delete \
+  --exclude='.venv/' --exclude='__pycache__/' --exclude='*.pyc' \
+  "$HOME/.local/share/whisper-dictate/" "dots/.local/share/whisper-dictate/"
+
 # Hyprland config. Skip matugen-generated color files.
 rsync -a \
   --exclude='*.new' \
