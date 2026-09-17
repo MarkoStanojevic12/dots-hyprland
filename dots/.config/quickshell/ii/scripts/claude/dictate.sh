@@ -3,6 +3,7 @@
 #
 #   record <file> [endpoint] [model]      — record until killed, printing
 #                                     partial <text so far>
+#                                     loading <model being loaded>
 #                                     final <transcript>   (and deletes <file>)
 #   transcribe <file> [endpoint] [model]  — send it off and print one of
 #                                     text\n<transcript>
@@ -47,21 +48,26 @@ record)
         offset=0
         while kill -0 "$recorder" 2>/dev/null; do
             size=$(stat -c%s "$file" 2>/dev/null || echo 0)
-            # 16000 Hz * 2 bytes: half a second of new audio per round trip,
-            # so a fast decode does not turn into a request storm.
-            if [ "$((size - offset))" -lt 16000 ]; then
-                sleep 0.3
+            # 16000 Hz * 2 bytes: 0.2s of new audio per round trip. The request
+            # is synchronous, so the loop paces itself off the decode instead of
+            # a fixed interval — which is what lets a faster model feel faster.
+            if [ "$((size - offset))" -lt 6400 ]; then
+                sleep 0.05
                 continue
             fi
-            # Generous: the first chunk after picking a new model is what waits
-            # for it to load, and for an uncached one that means the download.
-            # Recording carries on regardless, so nothing is lost meanwhile.
-            text=$(tail -c "+$((offset + 1))" "$file" | head -c "$((size - offset))" |
-                curl -sS --max-time 600 -X POST \
+            reply=$(tail -c "+$((offset + 1))" "$file" | head -c "$((size - offset))" |
+                curl -sS --max-time 120 -X POST \
                     -H 'Content-Type: application/octet-stream' \
-                    --data-binary @- "$stream/chunk?id=$session" 2>/dev/null | tr '\n' ' ')
+                    --data-binary @- -w $'\n%{http_code}' "$stream/chunk?id=$session" 2>/dev/null)
             offset=$size
-            [ -n "${text//[[:space:]]/}" ] && printf 'partial %s\n' "$text"
+            code=${reply##*$'\n'}
+            text=$(printf '%s' "${reply%$'\n'*}" | tr '\n' ' ')
+            case $code in
+            # 202 is the model still coming off disk or the network; the audio
+            # is buffered server-side, so the next chunk catches up.
+            202) printf 'loading %s\n' "$text" ;;
+            200) [ -n "${text//[[:space:]]/}" ] && printf 'partial %s\n' "$text" ;;
+            esac
         done
 
         # Hand over the audio recorded since the last preview and take the

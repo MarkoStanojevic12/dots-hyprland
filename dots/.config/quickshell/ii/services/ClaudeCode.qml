@@ -316,6 +316,9 @@ Singleton {
     // What the streaming decoder has heard so far. A preview only — the text
     // that reaches the composer always comes from the final full-quality pass.
     property string dictationPartial: ""
+    // Non-empty while the server is pulling weights off disk or huggingface,
+    // which on a first use of an uncached model is a multi-gigabyte download.
+    property string dictationLoading: ""
 
     // Click to record, click again to stop: stopping is killing the recorder,
     // and the transcript is inserted from the exit handler.
@@ -327,6 +330,7 @@ Singleton {
         }
         root.dictationError = "";
         root.dictationPartial = "";
+        root.dictationLoading = "";
         recordProcess.field = field;
         recordProcess.path = `${Directories.claudeAttachments}/dictation-${Date.now()}.raw`;
         recordProcess.command = ["bash", root.dictateScript, "record", recordProcess.path, root.dictationEndpoint, root.dictationModel];
@@ -338,6 +342,7 @@ Singleton {
     // land in the composer the same way.
     function insertDictation(target, body) {
         root.dictationPartial = "";
+        root.dictationLoading = "";
         if (!target || body.length === 0) return;
         if (target.selectionStart !== target.selectionEnd) {
             target.remove(target.selectionStart, target.selectionEnd);
@@ -358,10 +363,14 @@ Singleton {
 
         stdout: SplitParser {
             onRead: data => {
-                if (data.startsWith("partial "))
+                if (data.startsWith("partial ")) {
+                    root.dictationLoading = "";
                     root.dictationPartial = data.slice(8).trim();
-                else if (data.startsWith("final "))
+                } else if (data.startsWith("loading ")) {
+                    root.dictationLoading = data.slice(8).trim();
+                } else if (data.startsWith("final ")) {
                     recordProcess.finalText = data.slice(6).trim();
+                }
             }
         }
 

@@ -1040,12 +1040,14 @@ Item {
                 StyledText { // Live preview; the composer only gets the final pass
                     Layout.fillWidth: true
                     Layout.bottomMargin: 4
-                    visible: ClaudeCode.dictationPartial.length > 0
+                    visible: ClaudeCode.dictationPartial.length > 0 || ClaudeCode.dictationLoading.length > 0
                     wrapMode: Text.Wrap
                     font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
                     font.italic: true
                     color: Appearance.colors.colSubtext
-                    text: ClaudeCode.dictationPartial
+                    text: ClaudeCode.dictationLoading.length > 0
+                        ? Translation.tr("Loading %1…").arg(ClaudeCode.dictationLoading)
+                        : ClaudeCode.dictationPartial
                 }
 
                 RowLayout {
