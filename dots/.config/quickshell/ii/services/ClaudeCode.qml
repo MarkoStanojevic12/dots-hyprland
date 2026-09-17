@@ -267,6 +267,104 @@ Singleton {
     }
 
     // ------------------------------------------------------------------
+    // Dictation
+    // ------------------------------------------------------------------
+
+    readonly property string dictateScript: Quickshell.shellPath("scripts/claude/dictate.sh")
+    readonly property bool dictationEnabled: root.options?.dictationEnable ?? true
+    readonly property string dictationEndpoint: root.options?.dictationEndpoint ?? ""
+
+    property bool dictating: false
+    property bool transcribing: false
+    property string dictationError: ""
+    // What the streaming decoder has heard so far. A preview only — the text
+    // that reaches the composer always comes from the final full-quality pass.
+    property string dictationPartial: ""
+
+    // Click to record, click again to stop: stopping is killing the recorder,
+    // and the transcript is inserted from the exit handler.
+    function toggleDictation(field) {
+        if (root.transcribing) return;
+        if (root.dictating) {
+            recordProcess.running = false;
+            return;
+        }
+        root.dictationError = "";
+        root.dictationPartial = "";
+        recordProcess.field = field;
+        recordProcess.path = `${Directories.claudeAttachments}/dictation-${Date.now()}.raw`;
+        recordProcess.command = ["bash", root.dictateScript, "record", recordProcess.path, root.dictationEndpoint];
+        root.dictating = true;
+        recordProcess.running = true;
+    }
+
+    Process {
+        id: recordProcess
+        property var field: null
+        property string path: ""
+
+        stdout: SplitParser {
+            onRead: data => {
+                if (data.startsWith("partial "))
+                    root.dictationPartial = data.slice(8).trim();
+            }
+        }
+
+        onExited: {
+            root.dictating = false;
+            if (recordProcess.path.length === 0) return;
+            transcribeProcess.field = recordProcess.field;
+            transcribeProcess.command = ["bash", root.dictateScript, "transcribe", recordProcess.path, root.dictationEndpoint];
+            recordProcess.path = "";
+            root.transcribing = true;
+            transcribeProcess.running = true;
+        }
+    }
+
+    Process {
+        id: transcribeProcess
+        property var field: null
+
+        onExited: root.transcribing = false
+
+        stdout: StdioCollector {
+            id: dictationCollector
+            onStreamFinished: {
+                root.transcribing = false;
+                const output = dictationCollector.text;
+                const split = output.indexOf("\n");
+                const kind = (split === -1 ? output : output.slice(0, split)).trim();
+                const body = (split === -1 ? "" : output.slice(split + 1)).trim();
+
+                root.dictationPartial = "";
+
+                if (kind !== "text" || body.length === 0) {
+                    root.dictationError = body.length > 0 ? body : Translation.tr("Nothing was transcribed");
+                    return;
+                }
+
+                const target = transcribeProcess.field;
+                if (!target) return;
+                if (target.selectionStart !== target.selectionEnd) {
+                    target.remove(target.selectionStart, target.selectionEnd);
+                }
+                // Dictating twice in a row should read as two sentences rather
+                // than one run-on word.
+                const before = target.text.slice(0, target.cursorPosition);
+                const separator = (before.length > 0 && !/\s$/.test(before)) ? " " : "";
+                target.insert(target.cursorPosition, separator + body);
+                target.forceActiveFocus();
+            }
+        }
+    }
+
+    Timer { // A dictation error is worth a glance, not a dismiss click
+        running: root.dictationError.length > 0
+        interval: 8000
+        onTriggered: root.dictationError = ""
+    }
+
+    // ------------------------------------------------------------------
     // Where the CLI is
     // ------------------------------------------------------------------
 

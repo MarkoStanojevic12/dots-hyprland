@@ -629,6 +629,11 @@ Singleton {
                     // still has to be authenticated once from a terminal
                     // (`claude`, then /mcp).
                     property string mcpConfigPath: ""
+                    // Mic button in the composer. Recording goes to a whisper
+                    // server on this machine (systemctl --user status
+                    // whisper-dictate), so no audio leaves it.
+                    property bool dictationEnable: true
+                    property string dictationEndpoint: "http://127.0.0.1:8765/transcribe"
                     // Mirrors CLAUDE_CODE_AUTO_COMPACT_WINDOW from ~/.claude/settings.json
                     // so the context ring measures against the point where
                     // the CLI compacts, not the model's full window. 0 = model window.

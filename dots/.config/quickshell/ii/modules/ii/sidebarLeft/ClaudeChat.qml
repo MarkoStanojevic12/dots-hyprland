@@ -1027,6 +1027,27 @@ Item {
                     }
                 }
 
+                StyledText { // Why the last dictation produced nothing
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: 4
+                    visible: ClaudeCode.dictationError.length > 0
+                    wrapMode: Text.Wrap
+                    font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
+                    color: Appearance.m3colors.m3error
+                    text: ClaudeCode.dictationError
+                }
+
+                StyledText { // Live preview; the composer only gets the final pass
+                    Layout.fillWidth: true
+                    Layout.bottomMargin: 4
+                    visible: ClaudeCode.dictationPartial.length > 0
+                    wrapMode: Text.Wrap
+                    font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
+                    font.italic: true
+                    color: Appearance.colors.colSubtext
+                    text: ClaudeCode.dictationPartial
+                }
+
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 0
@@ -1094,6 +1115,45 @@ Item {
                                     event.accepted = true;
                                 }
                             }
+                        }
+                    }
+
+                    RippleButton { // Dictate: click to record, click to stop
+                        id: dictateButton
+                        visible: ClaudeCode.dictationEnabled
+                        Layout.alignment: Qt.AlignBottom
+                        implicitWidth: 40
+                        implicitHeight: 40
+                        buttonRadius: Appearance.rounding.small
+                        enabled: !ClaudeCode.transcribing
+                        toggled: ClaudeCode.dictating
+                        onClicked: ClaudeCode.toggleDictation(messageInputField)
+
+                        contentItem: MaterialSymbol {
+                            anchors.centerIn: parent
+                            horizontalAlignment: Text.AlignHCenter
+                            iconSize: 22
+                            fill: ClaudeCode.dictating ? 1 : 0
+                            color: dictateButton.toggled ? Appearance.m3colors.m3onPrimary
+                                : dictateButton.enabled ? Appearance.colors.colSubtext
+                                : Appearance.colors.colOnLayer2Disabled
+                            text: ClaudeCode.transcribing ? "more_horiz"
+                                : ClaudeCode.dictating ? "stop_circle"
+                                : "mic"
+
+                            SequentialAnimation on opacity {
+                                running: ClaudeCode.dictating
+                                loops: Animation.Infinite
+                                alwaysRunToEnd: true
+                                NumberAnimation { to: 0.4; duration: 600; easing.type: Easing.InOutQuad }
+                                NumberAnimation { to: 1.0; duration: 600; easing.type: Easing.InOutQuad }
+                            }
+                        }
+
+                        StyledToolTip {
+                            text: ClaudeCode.transcribing ? Translation.tr("Transcribing…")
+                                : ClaudeCode.dictating ? Translation.tr("Recording — click to stop and insert")
+                                : Translation.tr("Dictate. Runs on this machine; no audio leaves it.")
                         }
                     }
 
