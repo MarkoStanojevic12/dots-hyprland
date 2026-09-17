@@ -1128,6 +1128,30 @@ Item {
                         enabled: !ClaudeCode.transcribing
                         toggled: ClaudeCode.dictating
                         onClicked: ClaudeCode.toggleDictation(messageInputField)
+                        altAction: () => {
+                            if (modelMenuLoader.active) {
+                                modelMenuLoader.item?.close();
+                                return;
+                            }
+                            ClaudeCode.refreshDictationModels();
+                            modelMenuLoader.active = true;
+                        }
+
+                        Loader {
+                            id: modelMenuLoader
+                            active: false
+                            sourceComponent: DictationModelMenu {
+                                anchorHovered: dictateButton.hovered
+                                anchor {
+                                    window: dictateButton.QsWindow.window
+                                    item: dictateButton
+                                    gravity: Edges.Top
+                                    edges: Edges.Top
+                                }
+                                Component.onCompleted: visible = true
+                                onMenuClosed: modelMenuLoader.active = false
+                            }
+                        }
 
                         contentItem: MaterialSymbol {
                             anchors.centerIn: parent
@@ -1154,6 +1178,9 @@ Item {
                             text: ClaudeCode.transcribing ? Translation.tr("Transcribing…")
                                 : ClaudeCode.dictating ? Translation.tr("Recording — click to stop and insert")
                                 : Translation.tr("Dictate. Runs on this machine; no audio leaves it.")
+                                    + (ClaudeCode.dictationModel.length > 0
+                                        ? "\n" + Translation.tr("Model: %1 — right-click to change").arg(ClaudeCode.dictationModel)
+                                        : "\n" + Translation.tr("Right-click to pick a model"))
                         }
                     }
 

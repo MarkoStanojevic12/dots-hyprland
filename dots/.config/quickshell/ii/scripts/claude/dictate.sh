@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Dictation for the Claude sidebar composer.
 #
-#   record <file> [endpoint]      — record the default source until killed,
-#                                   printing as it goes
+#   record <file> [endpoint] [model]      — record until killed, printing
 #                                     partial <text so far>
 #                                     final <transcript>   (and deletes <file>)
-#   transcribe <file> [endpoint]  — send it off and print one of
+#   transcribe <file> [endpoint] [model]  — send it off and print one of
 #                                     text\n<transcript>
 #                                     error\n<what went wrong>
+#   models [endpoint]             — list the ids the server will switch to,
+#                                   the current one marked with a leading "* "
 #
 # Raw s16le rather than a wav: recording stops by killing the recorder, and a
 # wav killed mid-write keeps the placeholder length in its header. pw-record
@@ -31,6 +32,7 @@ case ${1:-} in
 record)
     file=${2:?target file}
     endpoint=${3:-}
+    model=${4:-}
     [ -n "$endpoint" ] || endpoint=$DEFAULT_ENDPOINT
     mkdir -p "$(dirname "$file")"
 
@@ -39,7 +41,7 @@ record)
     trap 'kill "$recorder" 2>/dev/null' TERM INT EXIT
 
     stream=${endpoint%/transcribe}/stream
-    session=$(curl -sS --max-time 5 -X POST "$stream/start" 2>/dev/null)
+    session=$(curl -sS --max-time 5 -X POST "$stream/start?model=$model" 2>/dev/null)
 
     if [[ $session =~ ^[0-9]+$ ]]; then
         offset=0
@@ -51,8 +53,11 @@ record)
                 sleep 0.3
                 continue
             fi
+            # Generous: the first chunk after picking a new model is what waits
+            # for it to load, and for an uncached one that means the download.
+            # Recording carries on regardless, so nothing is lost meanwhile.
             text=$(tail -c "+$((offset + 1))" "$file" | head -c "$((size - offset))" |
-                curl -sS --max-time 60 -X POST \
+                curl -sS --max-time 600 -X POST \
                     -H 'Content-Type: application/octet-stream' \
                     --data-binary @- "$stream/chunk?id=$session" 2>/dev/null | tr '\n' ' ')
             offset=$size
@@ -80,7 +85,9 @@ record)
 transcribe)
     file=${2:?source file}
     endpoint=${3:-}
+    model=${4:-}
     [ -n "$endpoint" ] || endpoint=$DEFAULT_ENDPOINT
+    [ -n "$model" ] && endpoint="$endpoint?model=$model"
     trap 'rm -f "$file"' EXIT
 
     size=$(stat -c%s "$file" 2>/dev/null || echo 0)
@@ -100,7 +107,13 @@ transcribe)
     esac
     ;;
 
+models)
+    endpoint=${2:-}
+    [ -n "$endpoint" ] || endpoint=$DEFAULT_ENDPOINT
+    curl -sS --max-time 5 "${endpoint%/transcribe}/models" 2>/dev/null
+    ;;
+
 *)
-    emit error "usage: dictate.sh record|transcribe <file>"
+    emit error "usage: dictate.sh record|transcribe <file> | models"
     ;;
 esac

@@ -634,6 +634,9 @@ Singleton {
                     // whisper-dictate), so no audio leaves it.
                     property bool dictationEnable: true
                     property string dictationEndpoint: "http://127.0.0.1:8765/transcribe"
+                    // Right-click the mic to pick one. Empty leaves the server
+                    // on whatever WHISPER_MODEL it started with.
+                    property string dictationModel: ""
                     // Mirrors CLAUDE_CODE_AUTO_COMPACT_WINDOW from ~/.claude/settings.json
                     // so the context ring measures against the point where
                     // the CLI compacts, not the model's full window. 0 = model window.

@@ -273,6 +273,42 @@ Singleton {
     readonly property string dictateScript: Quickshell.shellPath("scripts/claude/dictate.sh")
     readonly property bool dictationEnabled: root.options?.dictationEnable ?? true
     readonly property string dictationEndpoint: root.options?.dictationEndpoint ?? ""
+    readonly property string dictationModel: root.options?.dictationModel ?? ""
+
+    // Whatever the server says it will switch to, newest fetch wins. Populated
+    // when the picker opens so the list cannot drift from WHISPER_MODELS.
+    property var dictationModels: []
+    property string dictationServerModel: ""
+
+    function selectDictationModel(name) {
+        if (!root.options) return;
+        root.options.dictationModel = name;
+        root.dictationServerModel = name;
+    }
+
+    function refreshDictationModels() {
+        if (modelsProcess.running) return;
+        modelsProcess.command = ["bash", root.dictateScript, "models", root.dictationEndpoint];
+        modelsProcess.running = true;
+    }
+
+    Process {
+        id: modelsProcess
+
+        stdout: StdioCollector {
+            id: modelsCollector
+            onStreamFinished: {
+                const names = [];
+                for (const line of modelsCollector.text.split("\n")) {
+                    const name = line.replace(/^\*\s*/, "").trim();
+                    if (name.length === 0) continue;
+                    if (line.startsWith("*")) root.dictationServerModel = name;
+                    names.push(name);
+                }
+                root.dictationModels = names;
+            }
+        }
+    }
 
     property bool dictating: false
     property bool transcribing: false
@@ -293,7 +329,7 @@ Singleton {
         root.dictationPartial = "";
         recordProcess.field = field;
         recordProcess.path = `${Directories.claudeAttachments}/dictation-${Date.now()}.raw`;
-        recordProcess.command = ["bash", root.dictateScript, "record", recordProcess.path, root.dictationEndpoint];
+        recordProcess.command = ["bash", root.dictateScript, "record", recordProcess.path, root.dictationEndpoint, root.dictationModel];
         root.dictating = true;
         recordProcess.running = true;
     }
@@ -344,7 +380,7 @@ Singleton {
             // Streaming was unavailable, so the recording is still on disk and
             // the one-shot pass is the only way to get the words out of it.
             transcribeProcess.field = recordProcess.field;
-            transcribeProcess.command = ["bash", root.dictateScript, "transcribe", recordProcess.path, root.dictationEndpoint];
+            transcribeProcess.command = ["bash", root.dictateScript, "transcribe", recordProcess.path, root.dictationEndpoint, root.dictationModel];
             recordProcess.path = "";
             root.transcribing = true;
             transcribeProcess.running = true;
