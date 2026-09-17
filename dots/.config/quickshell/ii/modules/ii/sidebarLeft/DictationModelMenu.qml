@@ -12,9 +12,6 @@ PopupWindow {
 
     signal menuClosed
 
-    property bool anchorHovered: false
-    readonly property bool keepOpen: root.anchorHovered || menuMouseArea.containsMouse
-
     color: "transparent"
     readonly property real padding: Appearance.sizes.elevationMargin
     implicitWidth: Math.max(180, menuColumn.implicitWidth) + (menuBackground.padding + root.padding) * 2
@@ -25,23 +22,29 @@ PopupWindow {
         root.menuClosed();
     }
 
-    onKeepOpenChanged: {
-        if (root.keepOpen)
-            closeTimer.stop();
+    // The menu stays up until it is dismissed on purpose. It used to close half a
+    // second after the pointer left the button or the menu, which is not enough
+    // time to cross the gap between them and read the list.
+    //
+    // Joining the sidebar's shared grab as persistent is what keeps a click on
+    // this menu from dismissing the sidebar underneath it.
+    onVisibleChanged: {
+        if (root.visible)
+            GlobalFocusGrab.addPersistent(root);
         else
-            closeTimer.restart();
+            GlobalFocusGrab.removePersistent(root);
     }
 
-    Timer {
-        id: closeTimer
-        interval: 500
-        onTriggered: root.close()
+    Connections {
+        target: GlobalFocusGrab
+        function onDismissed() {
+            root.close();
+        }
     }
 
     MouseArea {
         id: menuMouseArea
         anchors.fill: parent
-        hoverEnabled: true
 
         StyledRectangularShadow {
             target: menuBackground

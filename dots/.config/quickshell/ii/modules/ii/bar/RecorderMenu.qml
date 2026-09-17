@@ -12,9 +12,6 @@ PopupWindow {
 
     signal menuClosed
 
-    property bool anchorHovered: false
-    readonly property bool keepOpen: root.anchorHovered || menuMouseArea.containsMouse
-
     color: "transparent"
     readonly property real padding: Appearance.sizes.elevationMargin
     implicitWidth: menuColumn.implicitWidth + (menuBackground.padding + root.padding) * 2
@@ -25,23 +22,25 @@ PopupWindow {
         root.menuClosed();
     }
 
-    onKeepOpenChanged: {
-        if (root.keepOpen)
-            closeTimer.stop();
+    // Dismissed on purpose rather than on a hover-out timer; see the same change
+    // in DictationModelMenu for why half a second was never enough.
+    onVisibleChanged: {
+        if (root.visible)
+            GlobalFocusGrab.addPersistent(root);
         else
-            closeTimer.restart();
+            GlobalFocusGrab.removePersistent(root);
     }
 
-    Timer {
-        id: closeTimer
-        interval: 500
-        onTriggered: root.close()
+    Connections {
+        target: GlobalFocusGrab
+        function onDismissed() {
+            root.close();
+        }
     }
 
     MouseArea {
         id: menuMouseArea
         anchors.fill: parent
-        hoverEnabled: true
 
         StyledRectangularShadow {
             target: menuBackground

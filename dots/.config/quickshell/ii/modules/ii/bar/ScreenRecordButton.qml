@@ -49,7 +49,6 @@ CircleUtilButton {
             id: menuLoader
             active: false
             sourceComponent: RecorderMenu {
-                anchorHovered: root.hovered
                 anchor {
                     window: root.QsWindow.window
                     item: root

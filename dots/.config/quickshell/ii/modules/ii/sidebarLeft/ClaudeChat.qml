@@ -1109,6 +1109,9 @@ Item {
                                     if (event.modifiers & Qt.ShiftModifier) messageInputField.paste();
                                     else ClaudeCode.pasteInto(messageInputField);
                                     event.accepted = true;
+                                } else if (event.key === Qt.Key_Escape && modelMenuLoader.active) {
+                                    modelMenuLoader.item?.close();
+                                    event.accepted = true;
                                 } else if (event.key === Qt.Key_Escape && ClaudeCode.pendingAttachments.length > 0 && !ClaudeCode.busy) {
                                     ClaudeCode.clearAttachments();
                                     event.accepted = true;
@@ -1143,7 +1146,6 @@ Item {
                             id: modelMenuLoader
                             active: false
                             sourceComponent: DictationModelMenu {
-                                anchorHovered: dictateButton.hovered
                                 anchor {
                                     window: dictateButton.QsWindow.window
                                     item: dictateButton
@@ -1517,6 +1519,19 @@ Item {
             }
             ClaudeCode.resetTextScale();
         }
+    }
+
+    // Click anywhere else in the tab to dismiss the dictation model menu. The
+    // menu is its own window, so presses in here never reach it. The press is
+    // swallowed rather than passed through, so dismissing it cannot also
+    // re-trigger the mic button it is anchored to.
+    MouseArea {
+        anchors.fill: parent
+        z: 9000
+        enabled: modelMenuLoader.active
+        visible: enabled
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        onPressed: modelMenuLoader.item?.close()
     }
 
     Loader { // Working directory picker, over the whole tab
