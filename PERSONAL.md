@@ -18,6 +18,17 @@ git commit -m "..."
 git push origin personal
 ```
 
+## Extra dependencies
+Packages my customizations need that upstream's installer does not pull in.
+They go here rather than into `sdata/dist-arch/illogical-impulse-*/PKGBUILD`,
+which is upstream's and would conflict on every merge.
+```bash
+sudo pacman -S qmltermwidget
+```
+- `qmltermwidget` — the pty behind the play button on a code block in the
+  Claude sidebar (`modules/ii/sidebarLeft/aiChat/InlineTerminal.qml`). Without
+  it that button disappears; nothing else in the chat is affected.
+
 ## Restore on a fresh install
 ```bash
 git clone -b personal git@github.com:<me>/dots-hyprland.git ~/dots-hyprland
@@ -25,7 +36,8 @@ cd ~/dots-hyprland
 ./setup   # runs the end-4 installer, installing MY dots/ as the config
 ```
 (Or run the installer from upstream first, then `./sync-personal.sh` in reverse
-by copying `dots/.config/*` into `~/.config`.)
+by copying `dots/.config/*` into `~/.config`. Then install the extra
+dependencies above.)
 
 ## Pull upstream updates
 One command — fetches end-4, merges into `personal`, applies to live, reloads:
