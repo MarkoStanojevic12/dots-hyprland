@@ -7,6 +7,9 @@ import QtQuick.Layouts
 RippleButton {
     id: root
     required property ListView target
+    // A bottom-to-top list keeps its newest item at index 0, so the foot of
+    // the view is the beginning of the model rather than the end of it.
+    property bool reversed: false
 
     anchors {
         bottom: parent.bottom
@@ -33,7 +36,8 @@ RippleButton {
     buttonRadius: Appearance.rounding.verysmall
 
     downAction: () => {
-        target.positionViewAtEnd()
+        if (root.reversed) target.positionViewAtBeginning();
+        else target.positionViewAtEnd();
     }
 
     contentItem: Row {

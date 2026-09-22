@@ -85,6 +85,14 @@ Item {
         messageInputField.insert(cursor, `\n${indent}${marker}${gap}${checkbox ? "[ ] " : ""}`);
     }
 
+    // The message list is laid out bottom to top over this reversed copy, so
+    // the newest message is index 0. Everything else here counts messages
+    // oldest-first; the mapping between the two orders is its own inverse.
+    readonly property var messageIDsNewestFirst: ClaudeCode.messageIDs.slice().reverse()
+    function flipIndex(index) {
+        return ClaudeCode.messageIDs.length - 1 - index;
+    }
+
     // Find in chat, Ctrl+F. Hits are counted from the model, so a match in a
     // message whose delegate isn't loaded yet is still reachable.
     property bool chatSearchShown: false
@@ -111,8 +119,9 @@ Item {
         const hits = root.chatSearchHits;
         if (hits.length === 0) return 0;
         const top = messageListView.contentY;
-        let topIndex = messageListView.indexAt(0, top);
-        if (topIndex < 0) topIndex = messageListView.indexAt(0, top + messageListView.spacing + 1);
+        let topView = messageListView.indexAt(0, top);
+        if (topView < 0) topView = messageListView.indexAt(0, top + messageListView.spacing + 1);
+        const topIndex = topView < 0 ? 0 : root.flipIndex(topView);
         const first = hits.findIndex(hit => hit.messageIndex >= topIndex);
         return first === -1 ? 0 : first;
     }
@@ -146,7 +155,7 @@ Item {
         messageListView.following = false;
         // A message far off-screen has no delegate yet, so nothing can say
         // where its match is until the view has built it.
-        if (!root.chatSearchReveal()) messageListView.positionViewAtIndex(hit.messageIndex, ListView.Contain);
+        if (!root.chatSearchReveal()) messageListView.positionViewAtIndex(root.flipIndex(hit.messageIndex), ListView.Contain);
         chatSearchSettle.restart();
     }
 
@@ -156,7 +165,7 @@ Item {
     function chatSearchReveal() {
         const hit = root.chatSearchHit;
         if (!hit) return true;
-        const item = messageListView.itemAtIndex(hit.messageIndex);
+        const item = messageListView.itemAtIndex(root.flipIndex(hit.messageIndex));
         if (!item || item.searchCurrentY < 0) return false;
         const y = item.y + item.searchCurrentY;
         const margin = 48;
@@ -214,7 +223,7 @@ Item {
     function runFeature(feature) {
         root.usefulFeaturesShown = false;
         ClaudeCode.sendMessage(feature.prompt);
-        messageListView.positionViewAtEnd();
+        messageListView.positionViewAtBeginning();
     }
 
     UsefulFeatures {
@@ -306,13 +315,13 @@ Item {
         if (text.trim().length === 0 && ClaudeCode.pendingAttachments.length === 0) return;
         messageInputField.clear();
         ClaudeCode.sendMessage(text);
-        messageListView.positionViewAtEnd();
+        messageListView.positionViewAtBeginning();
     }
 
     Connections {
         target: ClaudeCode
         function onMessageAppended() {
-            Qt.callLater(messageListView.positionViewAtEnd);
+            Qt.callLater(messageListView.positionViewAtBeginning);
         }
     }
 
@@ -624,12 +633,20 @@ Item {
                 spacing: 24
                 popin: false
                 add: null // Function calls during streaming make this janky
+                // Laid out from the bottom up over a reversed model, so the
+                // newest message is index 0 and sits at the foot of the view.
+                // Opening the sidebar then builds one screenful, where running
+                // to the end of a top-to-bottom list had to build, lay out and
+                // measure every message in the conversation first.
+                verticalLayoutDirection: ListView.BottomToTop
 
                 touchpadScrollFactor: Config.options.interactions.scrolling.touchpadScrollFactor * 1.4
                 mouseScrollFactor: Config.options.interactions.scrolling.mouseScrollFactor * 1.4
 
                 // Follow the response only while the user is already at the
                 // bottom, so scrolling back to read doesn't yank them forward.
+                // The foot of the view is still atYEnd with the layout
+                // reversed; it is index 0 that lives down there now.
                 property bool following: true
                 onContentYChanged: following = atYEnd
                 Connections {
@@ -638,18 +655,19 @@ Item {
                         if (ClaudeCode.busy) messageListView.following = true;
                     }
                 }
-                onContentHeightChanged: if (following) Qt.callLater(positionViewAtEnd)
+                onContentHeightChanged: if (following) Qt.callLater(positionViewAtBeginning)
 
                 model: ScriptModel {
-                    values: ClaudeCode.messageIDs
+                    values: root.messageIDsNewestFirst
                 }
                 delegate: ClaudeMessage {
                     id: messageDelegate
                     required property var modelData
                     required property int index
+                    readonly property int messageIndex: root.flipIndex(messageDelegate.index)
                     messageData: ClaudeCode.messageByID[modelData]
                     searchQuery: root.chatSearchQuery
-                    searchCurrent: root.chatSearchHit?.messageIndex === messageDelegate.index ? root.chatSearchHit.ordinal : -1
+                    searchCurrent: root.chatSearchHit?.messageIndex === messageDelegate.messageIndex ? root.chatSearchHit.ordinal : -1
                 }
             }
 
@@ -665,6 +683,7 @@ Item {
 
             ScrollToBottomButton {
                 target: messageListView
+                reversed: true
             }
         }
 
