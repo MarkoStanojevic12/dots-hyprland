@@ -165,6 +165,18 @@ ColumnLayout {
             required property int index
             required property string modelData
 
+            // Every paragraph and every list item is its own chunk, so the gaps
+            // between them are this margin's job — the control's own padding
+            // can't tell a new paragraph from the next bullet and spaces them
+            // the same. Consecutive bullets keep the tight rhythm of a list.
+            readonly property bool listItem: /^\s{0,2}[-*]\s/.test(textArea.modelData)
+            readonly property bool afterListItem: textArea.index > 0
+                && /^\s{0,2}[-*]\s/.test(textLinesRepeater.model.values[textArea.index - 1] ?? "")
+            topPadding: 0
+            bottomPadding: 0
+            Layout.topMargin: textArea.index === 0 ? 0
+                : (textArea.listItem && textArea.afterListItem) ? 3 : 10
+
             // Fade in animation
             visible: opacity > 0
             opacity: fadeChunkSplitting ? (textLinesRepeater.textLineOpacities[index] ?? (root.messageData.done ? 1 : 0)) : 1
