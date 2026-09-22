@@ -43,6 +43,10 @@ ColumnLayout {
     // Overridable so a tab can set its own reading size without moving the
     // shell's type scale out from under everything else.
     property int bodyFontSize: Appearance.font.pixelSize.small
+    // The gutter the prose sits in. Call sites whose container already insets
+    // the text set this to 0, so the prose shares one left edge with whatever
+    // is stacked next to it instead of hanging off on its own.
+    property real textInset: 10
     // Monospace sits optically larger than the reading face at a matched
     // size, so it's nudged down to keep the line rhythm even.
     property int inlineCodeFontSize: Math.round(root.bodyFontSize * 0.94)
@@ -174,6 +178,8 @@ ColumnLayout {
                 && /^\s{0,2}[-*]\s/.test(textLinesRepeater.model.values[textArea.index - 1] ?? "")
             topPadding: 0
             bottomPadding: 0
+            leftPadding: root.textInset
+            rightPadding: root.textInset
             Layout.topMargin: textArea.index === 0 ? 0
                 : (textArea.listItem && textArea.afterListItem) ? 3 : 10
 

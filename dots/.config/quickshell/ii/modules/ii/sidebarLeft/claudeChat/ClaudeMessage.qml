@@ -325,6 +325,11 @@ Item {
                         id: textBlock
                         required property var modelData
                         required property int index
+                        // Prose, tool chips and the speaker line all hang from
+                        // the same left edge.
+                        Layout.leftMargin: 4
+                        Layout.rightMargin: 4
+                        textInset: 0
                         searchQuery: root.searchQuery
                         searchOrdinalBase: root.searchRanges[textBlock.index]?.base ?? 0
                         searchCurrent: root.searchCurrent

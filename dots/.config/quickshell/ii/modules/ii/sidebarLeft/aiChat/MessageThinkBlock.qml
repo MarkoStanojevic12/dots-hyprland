@@ -149,7 +149,7 @@ Item {
                 anchors.left: parent.left
                 anchors.right: parent.right
                 anchors.bottom: parent.bottom
-                implicitHeight: messageTextBlock.implicitHeight
+                implicitHeight: messageTextBlock.implicitHeight + 12
                 color: Appearance.colors.colLayer2
 
                 // Load data for the message at the correct scope
@@ -164,6 +164,7 @@ Item {
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.bottom: parent.bottom
+                    anchors.bottomMargin: 6
                     segmentContent: root.segmentContent
                 }
             }
