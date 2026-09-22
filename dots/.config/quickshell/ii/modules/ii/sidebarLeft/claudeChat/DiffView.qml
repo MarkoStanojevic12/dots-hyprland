@@ -376,7 +376,6 @@ ColumnLayout {
                 width: column.width
                 y: index * column.rowHeight + 1
                 height: column.rowHeight
-                radius: Appearance.rounding.verysmall
                 color: root.rowTint(modelData.sign)
             }
         }
