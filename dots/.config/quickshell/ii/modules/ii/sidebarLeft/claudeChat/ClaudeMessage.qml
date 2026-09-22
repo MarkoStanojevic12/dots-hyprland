@@ -96,9 +96,15 @@ Item {
     // next one. One number so the two can't drift apart.
     readonly property real timelineSpacing: 9
 
+    // Room for the accent bar down the left of a user turn, so the rule and the
+    // avatar aren't fighting over the same few pixels.
+    readonly property real barGutter: root.isUser ? 8 : 0
+
     // What the user wrote hangs from their name rather than from the avatar,
     // so the turn reads as one block. Claude's own output keeps the full width.
-    readonly property real contentInset: root.isUser ? 4 + speaker.implicitWidth + speakerRow.spacing : 4
+    readonly property real contentInset: root.isUser
+        ? 4 + root.barGutter + speaker.implicitWidth + speakerRow.spacing
+        : 4
 
     // Each speaker gets one of the palette's own accents rather than plain
     // white, so the two sides of the conversation are told apart at a glance
@@ -127,9 +133,32 @@ Item {
         z: -1
         visible: root.isUser
         radius: Appearance.rounding.small
+        // Square where the accent bar runs, so the rule reads as one straight
+        // line instead of pinching in at both ends.
+        topLeftRadius: 0
+        bottomLeftRadius: 0
         // A wash of the accent rather than a surface role: the tool chips are
         // already colLayer2, and a turn must not read as one more chip.
-        color: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.93)
+        gradient: Gradient {
+            orientation: Gradient.Horizontal
+            GradientStop { position: 0; color: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.93) }
+            // Gone by three quarters, so the last quarter is clear rather than
+            // the fade only just arriving at the edge.
+            // The same accent at zero alpha, not `transparent` -- that is black
+            // underneath, and Qt interpolates the colours before the alpha, so
+            // the middle of the run would dim before it faded.
+            GradientStop { position: 0.75; color: ColorUtils.transparentize(Appearance.colors.colPrimary, 1) }
+            GradientStop { position: 1; color: ColorUtils.transparentize(Appearance.colors.colPrimary, 1) }
+        }
+
+        Rectangle { // A hard left edge, so the turn starts on a line and not on a haze
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: 2
+            radius: 1
+            color: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.45)
+        }
     }
 
     ColumnLayout {
@@ -143,7 +172,7 @@ Item {
         RowLayout { // Who's talking
             id: speakerRow
             Layout.fillWidth: true
-            Layout.leftMargin: 4
+            Layout.leftMargin: 4 + root.barGutter
             spacing: 8
 
             Item {
