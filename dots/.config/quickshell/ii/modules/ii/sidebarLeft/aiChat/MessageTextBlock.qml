@@ -54,7 +54,12 @@ ColumnLayout {
     property list<string> renderedLatexHashes: []
     property string renderedSegmentContent: ""
     property string shownText: ""
-    property bool fadeChunkSplitting: !forceDisableChunkSplitting && !editing && !/\n\|/.test(shownText) && Config.options.sidebar.ai.textFadeIn
+    // Splitting is what lets prose fade in a paragraph at a time, but it also
+    // hands each chunk to the markdown parser on its own: a nested bullet has
+    // no list above it to nest under, and a selection can't cross a chunk.
+    // Once the turn is done there is nothing left to fade, so the pieces go
+    // back to being one document.
+    property bool fadeChunkSplitting: !done && !forceDisableChunkSplitting && !editing && !/\n\|/.test(shownText) && Config.options.sidebar.ai.textFadeIn
 
     // Find in chat. Ordinals run message-wide, so the base says where this
     // block's matches start counting.
@@ -169,10 +174,11 @@ ColumnLayout {
             required property int index
             required property string modelData
 
-            // Every paragraph and every list item is its own chunk, so the gaps
-            // between them are this margin's job — the control's own padding
-            // can't tell a new paragraph from the next bullet and spaces them
-            // the same. Consecutive bullets keep the tight rhythm of a list.
+            // While streaming, every paragraph and every list item is its own
+            // chunk, so the gaps between them are this margin's job — the
+            // control's own padding can't tell a new paragraph from the next
+            // bullet and spaces them the same. Consecutive bullets keep the
+            // tight rhythm of a list, matching how the finished turn renders.
             readonly property bool listItem: /^\s{0,2}[-*]\s/.test(textArea.modelData)
             readonly property bool afterListItem: textArea.index > 0
                 && /^\s{0,2}[-*]\s/.test(textLinesRepeater.model.values[textArea.index - 1] ?? "")
