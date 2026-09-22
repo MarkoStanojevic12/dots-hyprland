@@ -96,6 +96,10 @@ Item {
     // next one. One number so the two can't drift apart.
     readonly property real timelineSpacing: 9
 
+    // What the user wrote hangs from their name rather than from the avatar,
+    // so the turn reads as one block. Claude's own output keeps the full width.
+    readonly property real contentInset: root.isUser ? 4 + speaker.implicitWidth + speakerRow.spacing : 4
+
     // Each speaker gets one of the palette's own accents rather than plain
     // white, so the two sides of the conversation are told apart at a glance
     // and the colours re-derive themselves whenever the theme changes.
@@ -114,6 +118,20 @@ Item {
     visible: !!root.messageData
     width: parent?.width ?? implicitWidth
 
+    Rectangle { // What the user said sits on a tint, so an exchange has a visible start
+        anchors.fill: contentColumn
+        // Vertical only: the column already spans the full width, so bleeding
+        // sideways would just put the tint under the list's clip.
+        anchors.topMargin: -8
+        anchors.bottomMargin: -8
+        z: -1
+        visible: root.isUser
+        radius: Appearance.rounding.small
+        // A wash of the accent rather than a surface role: the tool chips are
+        // already colLayer2, and a turn must not read as one more chip.
+        color: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.93)
+    }
+
     ColumnLayout {
         id: contentColumn
         anchors {
@@ -123,6 +141,7 @@ Item {
         spacing: root.timelineSpacing
 
         RowLayout { // Who's talking
+            id: speakerRow
             Layout.fillWidth: true
             Layout.leftMargin: 4
             spacing: 8
@@ -195,7 +214,7 @@ Item {
 
         Flow { // Images pasted along with the message
             Layout.fillWidth: true
-            Layout.leftMargin: 4
+            Layout.leftMargin: root.contentInset
             Layout.rightMargin: 4
             spacing: 4
             visible: (root.messageData?.attachments ?? []).length > 0
@@ -325,9 +344,7 @@ Item {
                         id: textBlock
                         required property var modelData
                         required property int index
-                        // Prose, tool chips and the speaker line all hang from
-                        // the same left edge.
-                        Layout.leftMargin: 4
+                        Layout.leftMargin: root.contentInset
                         Layout.rightMargin: 4
                         textInset: 0
                         searchQuery: root.searchQuery

@@ -750,7 +750,9 @@ Item {
                 // delegates scrolled past the top still swallow clicks meant
                 // for the header buttons.
                 clip: true
-                spacing: 14
+                // Comfortably wider than the gap between steps inside a turn,
+                // so scrolling back the eye can find where a turn begins.
+                spacing: 24
                 popin: false
                 add: null // Function calls during streaming make this janky
 
