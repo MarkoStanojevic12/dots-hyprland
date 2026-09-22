@@ -324,147 +324,16 @@ Item {
         }
         spacing: root.padding
 
-        RowLayout { // Header
+        ChatHeaderInline { // The tab strip is the header; buttons at its right end
             Layout.fillWidth: true
-            spacing: root.padding
-
-            RippleButton { // Which conversation this is, and the way into the rest
-                id: historyButton
-                Layout.fillWidth: true
-                implicitHeight: 32
-                buttonRadius: Appearance.rounding.small
-                toggled: root.historyShown
-                onClicked: root.toggleHistory()
-
-                contentItem: RowLayout {
-                    anchors {
-                        fill: parent
-                        leftMargin: 8
-                        rightMargin: 6
-                    }
-                    spacing: 6
-
-                    MaterialSymbol {
-                        iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
-                        color: historyButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer1
-                        text: "history"
-                    }
-                    StyledText {
-                        Layout.fillWidth: true
-                        elide: Text.ElideRight
-                        font.pixelSize: Appearance.font.pixelSize.small * ClaudeCode.textScale
-                        color: historyButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer1
-                        text: ClaudeCode.conversationTitle.length > 0
-                            ? ClaudeCode.conversationTitle
-                            : Translation.tr("New conversation")
-                    }
-                    MaterialSymbol {
-                        iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
-                        color: historyButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colSubtext
-                        text: root.historyShown ? "expand_less" : "expand_more"
-                    }
-                }
-
-                StyledToolTip {
-                    text: Translation.tr("Past conversations in %1").arg(ClaudeCode.workingDirectory)
-                }
-            }
-
-            RippleButton { // Another conversation alongside this one
-                id: newTabButton
-                implicitWidth: 32
-                implicitHeight: 32
-                buttonRadius: Appearance.rounding.small
-                enabled: ClaudeCode.canOpenTab
-                onClicked: root.openTab()
-
-                contentItem: MaterialSymbol {
-                    anchors.centerIn: parent
-                    horizontalAlignment: Text.AlignHCenter
-                    iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
-                    color: newTabButton.enabled ? Appearance.colors.colOnLayer1 : Appearance.colors.colOnLayer1Inactive
-                    text: "add"
-                }
-
-                StyledToolTip {
-                    text: ClaudeCode.canOpenTab
-                        ? Translation.tr("New chat tab (Ctrl+T)\nRuns beside this one, in the same directory")
-                        : Translation.tr("%1 chats at once is the limit — each one is a whole CLI").arg(ClaudeCode.maxTabs)
-                }
-            }
-
-            RippleButton { // Start over
-                implicitWidth: 32
-                implicitHeight: 32
-                buttonRadius: Appearance.rounding.small
-                enabled: ClaudeCode.messageIDs.length > 0 && !ClaudeCode.busy
-                onClicked: root.startNewConversation()
-
-                contentItem: MaterialSymbol {
-                    anchors.centerIn: parent
-                    horizontalAlignment: Text.AlignHCenter
-                    iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
-                    color: parent.enabled ? Appearance.colors.colOnLayer1 : Appearance.colors.colOnLayer1Inactive
-                    text: "add_comment"
-                }
-
-                StyledToolTip {
-                    text: Translation.tr("New conversation (Ctrl+Shift+O)")
-                }
-            }
-
-            RippleButton { // claude.ai, for what the CLI has no access to
-                implicitWidth: 32
-                implicitHeight: 32
-                buttonRadius: Appearance.rounding.small
-                onClicked: Quickshell.execDetached(["xdg-open", root.claudeWebUrl])
-
-                contentItem: CustomIcon {
-                    anchors.centerIn: parent
-                    width: 18
-                    height: 18
-                    source: "claude-symbolic"
-                    colorize: true
-                    color: Appearance.colors.colOnLayer1
-                }
-
-                StyledToolTip {
-                    text: Translation.tr("Open claude.ai")
-                }
-            }
-
-            RippleButton { // Saved prompts
-                id: usefulFeaturesButton
-                visible: root.availableFeatures.length > 0
-                implicitWidth: 32
-                implicitHeight: 32
-                buttonRadius: Appearance.rounding.small
-                toggled: root.usefulFeaturesShown
-                onClicked: root.toggleUsefulFeatures()
-
-                contentItem: MaterialSymbol {
-                    anchors.centerIn: parent
-                    horizontalAlignment: Text.AlignHCenter
-                    iconSize: Appearance.font.pixelSize.larger * ClaudeCode.textScale
-                    color: usefulFeaturesButton.toggled ? Appearance.m3colors.m3onPrimary : Appearance.colors.colOnLayer1
-                    text: "bolt"
-                }
-
-                StyledToolTip {
-                    text: Translation.tr("Useful features")
-                }
-            }
-        }
-
-        Revealer { // The other conversations, once there is more than one
-            vertical: true
-            // A single conversation keeps the vertical space it had before tabs
-            // existed; the header's + is what says a second one is possible.
-            reveal: ClaudeCode.tabs.length > 1
-
-            ChatTabStrip {
-                width: mainColumn.width
-            }
+            historyShown: root.historyShown
+            usefulFeaturesShown: root.usefulFeaturesShown
+            availableFeatures: root.availableFeatures
+            onToggleHistory: root.toggleHistory()
+            onOpenTab: root.openTab()
+            onStartNewConversation: root.startNewConversation()
+            onOpenClaudeWeb: Quickshell.execDetached(["xdg-open", root.claudeWebUrl])
+            onToggleUsefulFeatures: root.toggleUsefulFeatures()
         }
 
         Revealer { // Useful features

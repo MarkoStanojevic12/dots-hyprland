@@ -10,45 +10,46 @@ import QtQuick.Layouts
  * strip whose tabs move as conversations are opened and closed is one you have
  * to read before clicking.
  *
- * Browser-style: only the current tab is a surface, the rest are labels on the
- * sidebar background with a hairline between them. The side margins are the
- * room the current tab's flared bottom corners need to stay inside the strip.
- *
- * Under the tabs runs a solid baseline in the same colour as the current one,
- * edge to edge, so the current tab has a surface to flare into instead of
- * ending in mid-air.
+ * Nothing is filled — the tabs are labels and the current one is underlined —
+ * so the only line the strip draws itself is a hairline along its foot, which
+ * is what separates the header from the messages under it. It runs edge to
+ * edge, behind whatever a header layout parks at the right end: it is the
+ * bottom of the header, not of the tabs.
  *
  * The height is stated rather than left to the layout because the Revealer this
  * sits in measures its child, and a layout reports nothing until it is polished.
  */
 Item {
     id: root
-    readonly property int baselineHeight: 3
+    readonly property int baselineHeight: 1
     implicitHeight: 34 + root.baselineHeight
 
-    // Which tab the pointer is on, so a tab can drop the hairline it shares
-    // with its neighbour. A tab only knows its own hover state.
-    property int hoveredIndex: -1
+    // Room kept free at the right end of the tab row for whatever a header
+    // layout parks there — a new-tab button, a cluster of them.
+    property int trailingReserve: 0
 
-    Rectangle { // The baseline the current tab runs into
+    Rectangle { // The line under the header
         anchors {
             left: parent.left
             right: parent.right
             bottom: parent.bottom
         }
         height: root.baselineHeight
-        color: Appearance.colors.colPrimaryContainer
+        color: Appearance.colors.colOutlineVariant
     }
 
     RowLayout {
         anchors {
             fill: parent
-            leftMargin: 6
-            rightMargin: 6
+            // Barely inset: with no fill to keep clear of the strip's edges,
+            // a margin here only steals width from the labels.
+            leftMargin: 2
+            rightMargin: 2 + root.trailingReserve
             topMargin: 3
             bottomMargin: root.baselineHeight
         }
-        // Tabs meet edge to edge; the hairline, not a gap, is what separates them.
+        // The rules under the tabs are what divide them; a gap as well would
+        // leave the underline of the current tab floating short of its label.
         spacing: 0
 
         Repeater {
@@ -66,11 +67,6 @@ Item {
 
                 session: modelData
                 tabIndex: index
-                stripHoveredIndex: root.hoveredIndex
-                onHoverRequested: (hoveredTab, entered) => {
-                    if (entered) root.hoveredIndex = hoveredTab;
-                    else if (root.hoveredIndex === hoveredTab) root.hoveredIndex = -1;
-                }
             }
         }
     }
