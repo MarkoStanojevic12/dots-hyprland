@@ -15,8 +15,8 @@ import QtQuick.Layouts
  * room the current tab's flared bottom corners need to stay inside the strip.
  *
  * Under the tabs runs a solid baseline in the same colour as the current one,
- * edge to edge and with nothing below it — the chat starts immediately after —
- * so the current tab has a surface to flare into instead of ending in mid-air.
+ * edge to edge, so the current tab has a surface to flare into instead of
+ * ending in mid-air.
  *
  * The height is stated rather than left to the layout because the Revealer this
  * sits in measures its child, and a layout reports nothing until it is polished.

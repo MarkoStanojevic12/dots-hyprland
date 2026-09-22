@@ -713,17 +713,14 @@ Item {
 
             // Scrolled-past messages dissolve under the tab strip's baseline
             // instead of being cut off by it. Only with the strip up: without
-            // it the chat has nothing above it to disappear behind.
-            readonly property int topFade: ClaudeCode.tabs.length > 1 ? 40 : 0
-            // Sits on top of mainColumn's spacing, so the chat keeps its
-            // distance from the header. With the tab strip up, the strip's
-            // baseline is what the chat hangs from instead: the spacing is
-            // cancelled out so the current tab runs straight into the messages.
-            Layout.topMargin: ClaudeCode.tabs.length > 1 ? -root.padding : 8
+            // it the chat has nothing above it to disappear behind. At the very
+            // top there is nothing scrolled past, so the first message stays crisp.
+            property real topFade: (ClaudeCode.tabs.length > 1 && !messageListView.atYBeginning) ? 40 : 0
 
-            Behavior on Layout.topMargin {
-                animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
+            Behavior on topFade {
+                animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
             }
+            Layout.topMargin: 8
             layer.enabled: true
             layer.effect: OpacityMask {
                 // The mask is stretched over the item, so the fade has to be
