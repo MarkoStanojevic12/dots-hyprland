@@ -210,6 +210,40 @@ Item {
                 color: Appearance.colors.colSubtext
                 text: root.messageData?.model ?? ""
             }
+
+            RippleButton { // The turn's own markdown, for pasting into a file
+                id: copyTurnButton
+                property bool copied: false
+                visible: !root.isUser && !root.isInterface && (root.messageData?.content ?? "").length > 0
+                implicitWidth: 22
+                implicitHeight: 22
+                buttonRadius: Appearance.rounding.small
+                // The rendered text loses the headings and bullets that make a
+                // document; what goes on the clipboard is what was written.
+                onClicked: {
+                    Quickshell.clipboardText = root.messageData?.content ?? "";
+                    copyTurnButton.copied = true;
+                    copiedTimer.restart();
+                }
+
+                contentItem: MaterialSymbol {
+                    anchors.centerIn: parent
+                    horizontalAlignment: Text.AlignHCenter
+                    iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
+                    color: copyTurnButton.copied ? Appearance.colors.colPrimary : Appearance.colors.colSubtext
+                    text: copyTurnButton.copied ? "inventory" : "content_copy"
+                }
+
+                Timer {
+                    id: copiedTimer
+                    interval: 1500
+                    onTriggered: copyTurnButton.copied = false
+                }
+
+                StyledToolTip {
+                    text: copyTurnButton.copied ? Translation.tr("Copied") : Translation.tr("Copy as markdown")
+                }
+            }
         }
 
         Flow { // Images pasted along with the message

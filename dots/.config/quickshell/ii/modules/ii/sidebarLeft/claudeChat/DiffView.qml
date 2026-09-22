@@ -18,8 +18,9 @@ import org.kde.syntaxhighlighting
  * line numbers and the greyed context lines around the change come from.
  * Shown side by side by default, old on the left and new on the right, with
  * filler rows keeping the two in step and the changed words marked; a toggle
- * flips it to a unified view. The code is syntax-highlighted from the file's
- * extension, the same way the chat's code blocks are.
+ * flips it to a unified view. A file the call created has no old side at all,
+ * so it drops to one column and says so. The code is syntax-highlighted from
+ * the file's extension, the same way the chat's code blocks are.
  */
 ColumnLayout {
     id: root
@@ -28,7 +29,17 @@ ColumnLayout {
     property string filePath: ""
     // The tool call's status; the file is read again once the edit has landed.
     property string status: "done"
+    // What the tool reported back. A Write over an existing file and a Write
+    // that made one are the same call with the same empty old side; by the time
+    // the path can be read the new content is already there, so the tool's own
+    // answer is the only thing that still knows which it was.
+    property string output: ""
+    readonly property bool created: root.oldText.length === 0
+        && /^File created successfully/i.test(root.output)
     property bool split: true
+    // Nothing existed to sit on the left, so the file is shown as what it is:
+    // one column of new lines, not a comparison against nothing.
+    readonly property bool sideBySide: root.split && !root.created
     // Diffing is O(n*m); past this the file gets shown as a plain addition.
     readonly property int lineBudget: 400
     readonly property int shownLimit: 120
@@ -235,7 +246,7 @@ ColumnLayout {
 
     readonly property var shownLines: root.lines.slice(0, root.shownLimit)
     readonly property var shownPairs: root.pairs.slice(0, root.shownLimit)
-    readonly property int totalRows: root.split ? root.pairs.length : root.lines.length
+    readonly property int totalRows: root.sideBySide ? root.pairs.length : root.lines.length
     readonly property int addedCount: root.diffLines.filter(line => line.sign === "+").length
     readonly property int removedCount: root.diffLines.filter(line => line.sign === "-").length
     readonly property int numberDigits: String(Math.max(1, root.lines.reduce((most, line) => Math.max(most, line.oldNumber ?? 0, line.newNumber ?? 0), 0))).length
@@ -277,6 +288,26 @@ ColumnLayout {
         Layout.leftMargin: 2
         spacing: 8
 
+        Rectangle {
+            visible: root.created
+            implicitWidth: createdLabel.implicitWidth + 10
+            implicitHeight: createdLabel.implicitHeight + 3
+            radius: Appearance.rounding.verysmall
+            // Filled rather than tinted: the row next to it is already primary
+            // on transparent, so another tint of the same hue would read as
+            // more of the same instead of as the headline.
+            color: Appearance.colors.colPrimary
+
+            StyledText {
+                id: createdLabel
+                anchors.centerIn: parent
+                font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
+                font.weight: Font.DemiBold
+                color: Appearance.colors.colOnPrimary
+                text: Translation.tr("New file")
+            }
+        }
+
         StyledText {
             visible: root.addedCount > 0
             font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
@@ -304,6 +335,7 @@ ColumnLayout {
         }
 
         RippleButton {
+            visible: !root.created
             implicitWidth: 22
             implicitHeight: 22
             buttonRadius: Appearance.rounding.verysmall
@@ -548,7 +580,7 @@ ColumnLayout {
             RowLayout { // Column headers
                 Layout.fillWidth: true
                 Layout.bottomMargin: 2
-                visible: root.split
+                visible: root.sideBySide
                 spacing: 7
 
                 Repeater {
@@ -576,7 +608,7 @@ ColumnLayout {
             Loader {
                 id: diffLoader
                 Layout.fillWidth: true
-                sourceComponent: root.split ? splitView : unifiedView
+                sourceComponent: root.sideBySide ? splitView : unifiedView
             }
 
             ContextButton {

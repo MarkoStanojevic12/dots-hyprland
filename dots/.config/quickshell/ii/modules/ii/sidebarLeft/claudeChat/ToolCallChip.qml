@@ -25,6 +25,25 @@ Rectangle {
     readonly property bool isTodo: root.toolName === "TodoWrite" && Array.isArray(root.input?.todos)
     readonly property bool isBash: root.toolName === "Bash" && (root.input?.command !== undefined)
 
+    // A move is a rename, not a command worth reading: `mv` prints nothing when
+    // it works, so the two paths are the entire result. Only a command that is
+    // nothing but one move qualifies — a move buried in a chain of other work
+    // would make this card a lie about what ran.
+    readonly property var move: {
+        if (!root.isBash) return null;
+        const command = (root.input?.command ?? "").trim();
+        if (/[;&|\n]/.test(command)) return null;
+        const tokens = command.match(/'[^']*'|"[^"]*"|\S+/g) ?? [];
+        let at = 0;
+        if (tokens[at] === "git") at++;
+        if (tokens[at] !== "mv") return null;
+        const operands = tokens.slice(at + 1)
+            .filter(token => !token.startsWith("-"))
+            .map(token => token.replace(/^['"]|['"]$/g, ""));
+        if (operands.length !== 2) return null;
+        return { from: operands[0], to: operands[1] };
+    }
+
     // Edits open on their own — the diff is the point of the chip. Bash stays
     // shut until asked. Clicking breaks the binding, so a manual toggle sticks.
     property bool expanded: root.isEdit || root.isWrite
@@ -128,9 +147,20 @@ Rectangle {
             }
         }
 
+        Loader { // Where the file went
+            Layout.fillWidth: true
+            active: root.expanded && root.move !== null && !root.errored
+            visible: active
+            sourceComponent: FileMoveView {
+                from: root.move?.from ?? ""
+                to: root.move?.to ?? ""
+            }
+        }
+
         Loader { // What the command was and what it printed
             Layout.fillWidth: true
-            active: root.expanded && root.isBash
+            // A failed move is a command again: whatever it printed is the point.
+            active: root.expanded && root.isBash && (root.move === null || root.errored)
             visible: active
             sourceComponent: CommandOutputView {
                 command: root.input?.command ?? ""
@@ -147,6 +177,7 @@ Rectangle {
             sourceComponent: DiffView {
                 filePath: root.input?.file_path ?? ""
                 status: root.toolCall?.status ?? "done"
+                output: root.toolCall?.output ?? ""
                 oldText: root.isEdit ? (root.input?.old_string ?? "") : ""
                 newText: root.isEdit ? (root.input?.new_string ?? "") : (root.input?.content ?? "")
             }
