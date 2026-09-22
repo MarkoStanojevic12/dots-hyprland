@@ -384,6 +384,7 @@ Item {
                         segmentContent: modelData.content
                         segmentLang: modelData.lang
                         completed: modelData.completed ?? false
+                        workingDirectory: ClaudeCode.workingDirectory
                         messageData: root.messageData
                         searchQuery: root.searchQuery
                         searchOrdinalBase: root.searchRanges[codeBlock.index]?.base ?? 0

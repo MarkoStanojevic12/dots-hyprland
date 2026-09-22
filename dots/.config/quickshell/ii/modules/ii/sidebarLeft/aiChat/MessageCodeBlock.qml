@@ -82,10 +82,14 @@ ColumnLayout {
     // qml, a diff) would need us to guess an interpreter, so it gets no button
     // rather than a wrong one. A pending command request is excluded: it already
     // has its own Approve/Reject below.
-    readonly property string runInTerminalScript: Quickshell.shellPath("scripts/hyprland/runInTerminal.sh")
     readonly property var runnableLangs: ["bash", "sh", "shell", "shell-session", "console", "zsh", "fish", "command"]
     readonly property bool runnable: root.runnableLangs.indexOf(String(root.segmentLang ?? "").toLowerCase()) !== -1
         && !(root.messageData?.functionPending ?? false)
+
+    // Where the block runs. Left empty the terminal falls back to $HOME, which
+    // is what the chats without a session directory of their own want.
+    property string workingDirectory: ""
+    property bool terminalOpen: false
 
     property real codeBlockBackgroundRounding: Appearance.rounding.small
     property real codeBlockHeaderPadding: 3
@@ -164,59 +168,19 @@ ColumnLayout {
                 AiMessageControlButton {
                     id: runCodeButton
                     visible: root.runnable
-                    buttonIcon: activated ? "check" : "play_arrow"
+                    buttonIcon: "play_arrow"
+                    activated: root.terminalOpen
 
+                    // The sidebar keeps the keyboard grab while this runs — that
+                    // is what makes the terminal typeable without any of the
+                    // focus handover the old spawn-a-window path needed.
                     onClicked: {
-                        // Hyprland gives the open sidebar exclusive keyboard focus,
-                        // so synthetic keystrokes land in the chat box no matter
-                        // which window is focused. Releasing the grab is not enough
-                        // — the layer surface has to stop asking for the keyboard,
-                        // and the script cannot be launched until it has, since the
-                        // window focus it checks is already correct and tells it
-                        // nothing about where the keys are actually going.
-                        GlobalFocusGrab.dismiss();
-                        GlobalStates.sidebarLeftYieldKeyboard = true;
-                        keyboardYieldTimer.restart();
-                        launchTimer.restart();
-                        runCodeButton.activated = true;
-                        runIconTimer.restart();
+                        if (root.terminalOpen && inlineTerminal.item) inlineTerminal.item.restart();
+                        else root.terminalOpen = true;
                     }
 
-                    Timer { // Lets the compositor take the keyboard back first
-                        id: launchTimer
-                        interval: 250
-                        repeat: false
-                        onTriggered: {
-                            const terminal = (Config.options.apps.terminal ?? "").split(/\s+/).filter(part => part.length > 0);
-                            // The script reuses a terminal already on this workspace
-                            // and only spawns one when there is nothing to reuse; the
-                            // terminal argv is a fallback, since it picks the same one
-                            // the Super+T keybind does. Passed as argv rather than a
-                            // shell string, so the snippet reaches it verbatim and no
-                            // quoting of ours can mangle it.
-                            Quickshell.execDetached([root.runInTerminalScript, root.segmentContent, ...terminal]);
-                        }
-                    }
-
-                    Timer {
-                        id: runIconTimer
-                        interval: 1500
-                        repeat: false
-                        onTriggered: {
-                            runCodeButton.activated = false
-                        }
-                    }
-
-                    Timer { // Long enough to cover the script's focus wait and typing
-                        id: keyboardYieldTimer
-                        interval: 5000
-                        repeat: false
-                        onTriggered: {
-                            GlobalStates.sidebarLeftYieldKeyboard = false
-                        }
-                    }
                     StyledToolTip {
-                        text: Translation.tr("Run in a terminal")
+                        text: root.terminalOpen ? Translation.tr("Run again") : Translation.tr("Run here")
                     }
                 }
                 AiMessageControlButton {
@@ -465,6 +429,28 @@ ColumnLayout {
         sourceComponent: root.previewKind === "markdown" ? markdownPreview
             : root.previewKind === "qml" ? qmlPreview
             : htmlPreview
+    }
+
+    Loader {
+        id: inlineTerminal
+        Layout.fillWidth: true
+        Layout.topMargin: root.codeBlockComponentSpacing
+        active: root.terminalOpen
+        visible: active
+        // Loaded by url rather than as a type: the terminal needs the
+        // qmltermwidget plugin, and referencing it by type would take every
+        // code block in the chat down with it when the plugin is missing.
+        source: Qt.resolvedUrl("InlineTerminal.qml")
+
+        onLoaded: {
+            inlineTerminal.item.workingDirectory = root.workingDirectory;
+            inlineTerminal.item.closeRequested.connect(() => root.terminalOpen = false);
+            inlineTerminal.item.command = root.segmentContent;
+        }
+        // Deferred: closing from inside the loader's own status change writes
+        // straight back into the property `active` reads, which Qt reports as
+        // a binding loop.
+        onStatusChanged: if (inlineTerminal.status === Loader.Error) Qt.callLater(() => root.terminalOpen = false)
     }
 
     component PreviewBox: Rectangle {
