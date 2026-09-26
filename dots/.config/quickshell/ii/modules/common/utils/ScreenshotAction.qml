@@ -71,7 +71,8 @@ Singleton {
                 return ["bash", "-c", `${Directories.recordScriptPath} --region '${slurpRegion}'`]
                 break;
             case ScreenshotAction.Action.RecordWithSound:
-                return ["bash", "-c", `${Directories.recordScriptPath} --region '${slurpRegion}' --sound`]
+                // Same command as Record: audio now comes from the screenRecord config
+                return ["bash", "-c", `${Directories.recordScriptPath} --region '${slurpRegion}'`]
                 break;
             default:
                 console.warn("[Region Selector] Unknown snip action, skipping snip.");

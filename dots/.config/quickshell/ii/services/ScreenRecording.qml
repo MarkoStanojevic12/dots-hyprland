@@ -17,9 +17,22 @@ Singleton {
     readonly property string savePath: Config.options.screenRecord.savePath.length > 0 ?
         Config.options.screenRecord.savePath : FileUtils.trimFileProtocol(Directories.videos)
 
+    // The record script reads these from the config itself, so every entry point
+    // (bar button, keybinds, region selector) picks up the same setting.
+    readonly property bool desktopAudio: Config.options.screenRecord.desktopAudio
+    readonly property bool microphone: Config.options.screenRecord.microphone
+
     function toggle() {
         Quickshell.execDetached([Directories.recordScriptPath]);
         settleTimer.restart();
+    }
+
+    function toggleDesktopAudio() {
+        Config.options.screenRecord.desktopAudio = !Config.options.screenRecord.desktopAudio;
+    }
+
+    function toggleMicrophone() {
+        Config.options.screenRecord.microphone = !Config.options.screenRecord.microphone;
     }
 
     function openFolder() {

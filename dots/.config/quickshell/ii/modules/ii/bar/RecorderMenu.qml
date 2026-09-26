@@ -72,6 +72,103 @@ PopupWindow {
                 }
                 spacing: 0
 
+                StyledText {
+                    Layout.fillWidth: true
+                    Layout.margins: 8
+                    Layout.bottomMargin: 2
+                    font.pixelSize: Appearance.font.pixelSize.smaller
+                    color: Appearance.colors.colSubtext
+                    text: Translation.tr("Record audio")
+                }
+
+                // Toggles deliberately leave the menu open: both of them are
+                // usually reviewed together before starting a recording.
+                RippleButton {
+                    id: desktopAudioEntry
+                    Layout.fillWidth: true
+                    buttonRadius: menuBackground.radius - menuBackground.padding
+                    horizontalPadding: 12
+                    implicitWidth: contentItem.implicitWidth + desktopAudioEntry.horizontalPadding * 2
+                    implicitHeight: 36
+                    toggled: ScreenRecording.desktopAudio
+
+                    releaseAction: () => ScreenRecording.toggleDesktopAudio()
+
+                    contentItem: RowLayout {
+                        anchors {
+                            verticalCenter: parent.verticalCenter
+                            left: parent.left
+                            right: parent.right
+                            leftMargin: desktopAudioEntry.horizontalPadding
+                            rightMargin: desktopAudioEntry.horizontalPadding
+                        }
+                        spacing: 8
+
+                        MaterialSymbol {
+                            iconSize: 18
+                            text: "volume_up"
+                        }
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: Translation.tr("Desktop audio")
+                        }
+
+                        MaterialSymbol {
+                            iconSize: 16
+                            text: "check"
+                            opacity: ScreenRecording.desktopAudio ? 1 : 0
+                        }
+                    }
+                }
+
+                RippleButton {
+                    id: micEntry
+                    Layout.fillWidth: true
+                    buttonRadius: menuBackground.radius - menuBackground.padding
+                    horizontalPadding: 12
+                    implicitWidth: contentItem.implicitWidth + micEntry.horizontalPadding * 2
+                    implicitHeight: 36
+                    toggled: ScreenRecording.microphone
+
+                    releaseAction: () => ScreenRecording.toggleMicrophone()
+
+                    contentItem: RowLayout {
+                        anchors {
+                            verticalCenter: parent.verticalCenter
+                            left: parent.left
+                            right: parent.right
+                            leftMargin: micEntry.horizontalPadding
+                            rightMargin: micEntry.horizontalPadding
+                        }
+                        spacing: 8
+
+                        MaterialSymbol {
+                            iconSize: 18
+                            text: "mic"
+                        }
+
+                        StyledText {
+                            Layout.fillWidth: true
+                            text: Translation.tr("Microphone")
+                        }
+
+                        MaterialSymbol {
+                            iconSize: 16
+                            text: "check"
+                            opacity: ScreenRecording.microphone ? 1 : 0
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.topMargin: 4
+                    Layout.bottomMargin: 4
+                    implicitHeight: 1
+                    color: Appearance.colors.colLayer0Border
+                }
+
                 RippleButton {
                     id: openFolderEntry
                     Layout.fillWidth: true
