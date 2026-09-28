@@ -125,13 +125,71 @@ Item {
     width: parent?.width ?? implicitWidth
 
     Rectangle { // What the user said sits on a tint, so an exchange has a visible start
-        anchors.fill: contentColumn
+        id: userTint
+        // A fraction rather than a width, so resizing the sidebar mid-entrance
+        // still lands on the full width.
+        property real reveal: 0
+        anchors.left: contentColumn.left
+        anchors.top: contentColumn.top
+        anchors.bottom: contentColumn.bottom
+        width: contentColumn.width * userTint.reveal
         // Vertical only: the column already spans the full width, so bleeding
         // sideways would just put the tint under the list's clip.
         anchors.topMargin: -8
         anchors.bottomMargin: -8
         z: -1
         visible: root.isUser
+
+        // Keyed to the viewport rather than to creation: the list keeps
+        // delegates alive past its edge, so a bubble scrolled out and back is
+        // usually never rebuilt.
+        readonly property bool inView: {
+            const view = root.ListView.view;
+            if (!view) return true;
+            return root.y + root.height > view.contentY && root.y < view.contentY + view.height;
+        }
+        onInViewChanged: {
+            if (userTint.inView) {
+                revealAnimation.restart();
+            } else {
+                revealAnimation.stop();
+                userTint.reveal = 0;
+                userTint.glow = 0;
+            }
+        }
+        Component.onCompleted: if (userTint.inView) revealAnimation.start()
+
+        property real glow: 0
+
+        SequentialAnimation {
+            id: revealAnimation
+            ScriptAction { script: userTint.glow = 0 }
+            NumberAnimation {
+                target: userTint
+                property: "reveal"
+                from: 0
+                to: 1
+                // No decelerating curve: it covers most of the width in the
+                // first few frames, and with the tint already faded out on the
+                // right, the grow reads as instant.
+                duration: 250
+                easing.type: Easing.InOutQuad
+            }
+            NumberAnimation {
+                target: userTint
+                property: "glow"
+                to: 1
+                duration: 120
+                easing.type: Easing.OutQuad
+            }
+            NumberAnimation {
+                target: userTint
+                property: "glow"
+                to: 0
+                duration: 280
+                easing.type: Easing.InOutQuad
+            }
+        }
         radius: Appearance.rounding.small
         // Square where the accent bar runs, so the rule reads as one straight
         // line instead of pinching in at both ends.
@@ -141,7 +199,7 @@ Item {
         // already colLayer2, and a turn must not read as one more chip.
         gradient: Gradient {
             orientation: Gradient.Horizontal
-            GradientStop { position: 0; color: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.93) }
+            GradientStop { position: 0; color: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.93 - 0.18 * userTint.glow) }
             // Gone by three quarters, so the last quarter is clear rather than
             // the fade only just arriving at the edge.
             // The same accent at zero alpha, not `transparent` -- that is black
