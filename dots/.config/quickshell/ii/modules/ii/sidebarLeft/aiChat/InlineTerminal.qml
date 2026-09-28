@@ -5,6 +5,8 @@ import qs.modules.common
 import qs.modules.common.widgets
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
+import Quickshell.Io
 import QMLTermWidget 2.0
 
 /**
@@ -25,16 +27,64 @@ Rectangle {
 
     // The plugin forces TERM=xterm on the whole shell process, so 256 colours
     // have to be put back from inside the pty.
-    readonly property string script: `export TERM=xterm-256color COLORTERM=truecolor
+    readonly property string script: `unset CLAUDE_TERM_SCRIPT
+export TERM=xterm-256color COLORTERM=truecolor
 ${root.command}
 printf '\\n─── exit %s ───\\n' "$?"
 command -v fish >/dev/null 2>&1 && exec fish
 exec "\${SHELL:-/bin/bash}"`
 
+    // Logged terminals record the whole pty session so Claude can read what it
+    // printed. The log lives only as long as this terminal does.
+    property bool logged: false
+    property double logStamp: Date.now()
+    readonly property string logDir: `${Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"}/claude-term`
+    readonly property string logPath: root.logged ? `${root.logDir}/${root.logStamp}.log` : ""
+    readonly property string renderScript: Quickshell.shellPath("scripts/claude/term-log.sh")
+    // `script` gives the command its own pty, so it still sees a tty. The script
+    // travels in the environment because `script -c` goes through $SHELL, which
+    // may be zsh or fish rather than bash. On the /tmp fallback the directory
+    // may already exist under someone else, so a log dir we don't own means the
+    // run goes unlogged rather than readable by them.
+    readonly property var shellArgs: root.logged
+        ? ["-c", `umask 077
+dir="$(dirname "$2")"
+mkdir -p -m 700 "$dir"
+[ -d "$dir" ] && [ -O "$dir" ] && [ ! -L "$dir" ] || exec bash -c "$1"
+export CLAUDE_TERM_SCRIPT="$1"
+exec script -qf -c 'exec bash -c "$CLAUDE_TERM_SCRIPT"' "$2"`, "bash", root.script, root.logPath]
+        : ["-c", root.script]
+
+    function removeLog() {
+        if (root.logPath.length > 0) Quickshell.execDetached(["rm", "-f", root.logPath]);
+    }
+
     function restart() {
+        root.removeLog();
+        root.logStamp = Date.now();
         root.exited = false;
         termLoader.active = false;
         termLoader.active = Qt.binding(() => root.command.length > 0);
+    }
+
+    function sendToClaude() {
+        if (root.logPath.length === 0 || renderProcess.running) return;
+        renderProcess.command = [root.renderScript, root.logPath, String(Math.max(20, termLoader.item?.columns ?? 120)), "200"];
+        renderProcess.running = true;
+    }
+
+    Component.onDestruction: root.removeLog()
+
+    Process {
+        id: renderProcess
+        stdout: StdioCollector {
+            id: renderCollector
+            onStreamFinished: {
+                const output = renderCollector.text.replace(/\s+$/, "");
+                if (output.length === 0) return;
+                ClaudeCode.insertIntoComposer(`Terminal output (live log: \`${root.logPath}\`, render with \`${root.renderScript} <log>\`):\n\`\`\`text\n${output}\n\`\`\``);
+            }
+        }
     }
 
     color: Appearance.colors.colLayer2
@@ -62,6 +112,15 @@ exec "\${SHELL:-/bin/bash}"`
                 text: root.exited ? Translation.tr("terminal · exited") : Translation.tr("terminal")
             }
 
+            AiMessageControlButton {
+                visible: root.logged
+                enabled: !renderProcess.running
+                buttonIcon: "send"
+                onClicked: root.sendToClaude()
+                StyledToolTip {
+                    text: Translation.tr("Send output to Claude")
+                }
+            }
             AiMessageControlButton {
                 buttonIcon: "refresh"
                 onClicked: root.restart()
@@ -117,7 +176,7 @@ exec "\${SHELL:-/bin/bash}"`
                 id: termSession
                 initialWorkingDirectory: root.workingDirectory.length > 0 ? root.workingDirectory : "$HOME"
                 shellProgram: "/bin/bash"
-                shellProgramArgs: ["-c", root.script]
+                shellProgramArgs: root.shellArgs
                 onFinished: root.exited = true
             }
 

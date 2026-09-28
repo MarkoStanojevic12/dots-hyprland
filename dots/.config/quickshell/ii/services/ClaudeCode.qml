@@ -219,6 +219,11 @@ Singleton {
 
     readonly property string clipboardScript: Quickshell.shellPath("scripts/claude/clipboard-paste.sh")
 
+    // The composer belongs to ClaudeChat, so text from elsewhere in the shell
+    // is handed over rather than typed in directly.
+    signal composerInsertRequested(string text)
+    function insertIntoComposer(text) { root.composerInsertRequested(text); }
+
     function detachAttachment(index) {
         root.pendingAttachments = root.pendingAttachments.filter((_, i) => i !== index);
     }

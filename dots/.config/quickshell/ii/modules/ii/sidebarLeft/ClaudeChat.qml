@@ -323,6 +323,12 @@ Item {
         function onMessageAppended() {
             Qt.callLater(messageListView.positionViewAtBeginning);
         }
+        function onComposerInsertRequested(text) {
+            const before = messageInputField.text.slice(0, messageInputField.cursorPosition);
+            const separator = before.length === 0 ? "" : before.endsWith("\n\n") ? "" : before.endsWith("\n") ? "\n" : "\n\n";
+            messageInputField.insert(messageInputField.cursorPosition, `${separator}${text}\n`);
+            messageInputField.forceActiveFocus();
+        }
     }
 
     ColumnLayout {

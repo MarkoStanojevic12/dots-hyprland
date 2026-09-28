@@ -443,6 +443,7 @@ Item {
                         segmentLang: modelData.lang
                         completed: modelData.completed ?? false
                         workingDirectory: ClaudeCode.workingDirectory
+                        terminalLogged: true
                         messageData: root.messageData
                         searchQuery: root.searchQuery
                         searchOrdinalBase: root.searchRanges[codeBlock.index]?.base ?? 0

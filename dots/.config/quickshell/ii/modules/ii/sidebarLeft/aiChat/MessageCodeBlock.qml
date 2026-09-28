@@ -90,6 +90,8 @@ ColumnLayout {
     // is what the chats without a session directory of their own want.
     property string workingDirectory: ""
     property bool terminalOpen: false
+    // Records the terminal so its output can be handed to Claude.
+    property bool terminalLogged: false
 
     property real codeBlockBackgroundRounding: Appearance.rounding.small
     property real codeBlockHeaderPadding: 3
@@ -444,6 +446,7 @@ ColumnLayout {
 
         onLoaded: {
             inlineTerminal.item.workingDirectory = root.workingDirectory;
+            inlineTerminal.item.logged = root.terminalLogged;
             inlineTerminal.item.closeRequested.connect(() => root.terminalOpen = false);
             inlineTerminal.item.command = root.segmentContent;
         }
