@@ -157,7 +157,8 @@ Singleton {
     readonly property var pendingPermission: root.active?.pendingPermission ?? null
     readonly property var pendingQuestion: root.active?.pendingQuestion ?? null
     readonly property var queuedMessages: root.active?.queuedMessages ?? []
-    readonly property var backgroundTasks: root.active?.backgroundTasks ?? []
+    readonly property var backgroundTaskIds: root.active?.backgroundTaskIds ?? []
+    readonly property var backgroundTaskInfo: root.active?.backgroundTaskInfo ?? ({})
     readonly property var sessions: root.active?.sessions ?? []
     readonly property bool sessionsLoading: root.active?.sessionsLoading ?? false
     readonly property string resumeSessionId: root.active?.resumeSessionId ?? ""
@@ -183,6 +184,7 @@ Singleton {
         root.pendingAttachments = [];
     }
     function interrupt() { root.active?.interrupt(); }
+    function stopBackgroundTask(taskId) { root.active?.stopBackgroundTask(taskId); }
     function clearMessages() { root.requireTab()?.clearMessages(); }
     function setModel(alias) { root.requireTab()?.setModel(alias); }
     function setEffort(alias) { root.requireTab()?.setEffort(alias); }

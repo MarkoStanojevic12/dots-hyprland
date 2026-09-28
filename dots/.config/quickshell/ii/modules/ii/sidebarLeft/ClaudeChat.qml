@@ -584,106 +584,129 @@ Item {
             }
         }
 
-        Item { // Messages
-            id: messagesArea
+        // Background work docks under the messages inside one layout slot, so
+        // its gap eases in with it instead of the layout's spacing snapping.
+        Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
-
-            // Scrolled-past messages dissolve under the tab strip's baseline
-            // instead of being cut off by it. Only with the strip up: without
-            // it the chat has nothing above it to disappear behind. At the very
-            // top there is nothing scrolled past, so the first message stays crisp.
-            property real topFade: (ClaudeCode.tabs.length > 1 && !messageListView.atYBeginning) ? 40 : 0
-
-            Behavior on topFade {
-                animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
-            }
             Layout.topMargin: 8
-            layer.enabled: true
-            layer.effect: OpacityMask {
-                // The mask is stretched over the item, so the fade has to be
-                // stated as a fraction of the height rather than in pixels.
-                maskSource: Rectangle {
-                    width: messagesArea.width
-                    height: messagesArea.height
-                    radius: Appearance.rounding.small
-                    gradient: Gradient {
-                        GradientStop {
-                            position: 0
-                            color: messagesArea.topFade > 0 ? "transparent" : "white"
+
+            Item { // Messages
+                id: messagesArea
+                anchors {
+                    top: parent.top
+                    left: parent.left
+                    right: parent.right
+                    bottom: parent.bottom
+                    bottomMargin: backgroundTaskGrid.visible
+                        ? backgroundTaskGrid.height + root.padding * Math.min(1, backgroundTaskGrid.height / 24)
+                        : 0
+                }
+
+                // Scrolled-past messages dissolve under the tab strip's baseline
+                // instead of being cut off by it. Only with the strip up: without
+                // it the chat has nothing above it to disappear behind. At the very
+                // top there is nothing scrolled past, so the first message stays crisp.
+                property real topFade: (ClaudeCode.tabs.length > 1 && !messageListView.atYBeginning) ? 40 : 0
+
+                Behavior on topFade {
+                    animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+                }
+                layer.enabled: true
+                layer.effect: OpacityMask {
+                    // The mask is stretched over the item, so the fade has to be
+                    // stated as a fraction of the height rather than in pixels.
+                    maskSource: Rectangle {
+                        width: messagesArea.width
+                        height: messagesArea.height
+                        radius: Appearance.rounding.small
+                        gradient: Gradient {
+                            GradientStop {
+                                position: 0
+                                color: messagesArea.topFade > 0 ? "transparent" : "white"
+                            }
+                            GradientStop {
+                                position: messagesArea.topFade / Math.max(1, messagesArea.height)
+                                color: "white"
+                            }
+                            GradientStop { position: 1; color: "white" }
                         }
-                        GradientStop {
-                            position: messagesArea.topFade / Math.max(1, messagesArea.height)
-                            color: "white"
-                        }
-                        GradientStop { position: 1; color: "white" }
                     }
                 }
-            }
 
-            StyledListView {
-                id: messageListView
-                anchors.fill: parent
-                // The layer above only masks painting, so without this the
-                // delegates scrolled past the top still swallow clicks meant
-                // for the header buttons.
-                clip: true
-                // Comfortably wider than the gap between steps inside a turn,
-                // so scrolling back the eye can find where a turn begins.
-                spacing: 24
-                popin: false
-                add: null // Function calls during streaming make this janky
-                // Laid out from the bottom up over a reversed model, so the
-                // newest message is index 0 and sits at the foot of the view.
-                // Opening the sidebar then builds one screenful, where running
-                // to the end of a top-to-bottom list had to build, lay out and
-                // measure every message in the conversation first.
-                verticalLayoutDirection: ListView.BottomToTop
+                StyledListView {
+                    id: messageListView
+                    anchors.fill: parent
+                    // The layer above only masks painting, so without this the
+                    // delegates scrolled past the top still swallow clicks meant
+                    // for the header buttons.
+                    clip: true
+                    // Comfortably wider than the gap between steps inside a turn,
+                    // so scrolling back the eye can find where a turn begins.
+                    spacing: 24
+                    popin: false
+                    add: null // Function calls during streaming make this janky
+                    // Laid out from the bottom up over a reversed model, so the
+                    // newest message is index 0 and sits at the foot of the view.
+                    // Opening the sidebar then builds one screenful, where running
+                    // to the end of a top-to-bottom list had to build, lay out and
+                    // measure every message in the conversation first.
+                    verticalLayoutDirection: ListView.BottomToTop
 
-                touchpadScrollFactor: Config.options.interactions.scrolling.touchpadScrollFactor * 1.4
-                mouseScrollFactor: Config.options.interactions.scrolling.mouseScrollFactor * 1.4
+                    touchpadScrollFactor: Config.options.interactions.scrolling.touchpadScrollFactor * 1.4
+                    mouseScrollFactor: Config.options.interactions.scrolling.mouseScrollFactor * 1.4
 
-                // Follow the response only while the user is already at the
-                // bottom, so scrolling back to read doesn't yank them forward.
-                // The foot of the view is still atYEnd with the layout
-                // reversed; it is index 0 that lives down there now.
-                property bool following: true
-                onContentYChanged: following = atYEnd
-                Connections {
-                    target: ClaudeCode
-                    function onBusyChanged() {
-                        if (ClaudeCode.busy) messageListView.following = true;
+                    // Follow the response only while the user is already at the
+                    // bottom, so scrolling back to read doesn't yank them forward.
+                    // The foot of the view is still atYEnd with the layout
+                    // reversed; it is index 0 that lives down there now.
+                    property bool following: true
+                    onContentYChanged: following = atYEnd
+                    Connections {
+                        target: ClaudeCode
+                        function onBusyChanged() {
+                            if (ClaudeCode.busy) messageListView.following = true;
+                        }
+                    }
+                    onContentHeightChanged: if (following) Qt.callLater(positionViewAtBeginning)
+
+                    model: ScriptModel {
+                        values: root.messageIDsNewestFirst
+                    }
+                    delegate: ClaudeMessage {
+                        id: messageDelegate
+                        required property var modelData
+                        required property int index
+                        readonly property int messageIndex: root.flipIndex(messageDelegate.index)
+                        messageData: ClaudeCode.messageByID[modelData]
+                        searchQuery: root.chatSearchQuery
+                        searchCurrent: root.chatSearchHit?.messageIndex === messageDelegate.messageIndex ? root.chatSearchHit.ordinal : -1
                     }
                 }
-                onContentHeightChanged: if (following) Qt.callLater(positionViewAtBeginning)
 
-                model: ScriptModel {
-                    values: root.messageIDsNewestFirst
+                PagePlaceholder {
+                    shown: ClaudeCode.messageIDs.length === 0
+                    icon: ClaudeCode.available ? "neurology" : "sync_problem"
+                    title: ClaudeCode.available ? "Claude" : Translation.tr("Claude Code not found")
+                    description: ClaudeCode.available
+                        ? Translation.tr("Runs on your Claude subscription\nWorking directory: %1\nCtrl+Shift+O to clear").arg(ClaudeCode.workingDirectory)
+                        : Translation.tr("Install the Claude Code CLI, or set\nsidebar.claude.cliPath in the config")
+                    shape: MaterialShape.Shape.Cookie9Sided
                 }
-                delegate: ClaudeMessage {
-                    id: messageDelegate
-                    required property var modelData
-                    required property int index
-                    readonly property int messageIndex: root.flipIndex(messageDelegate.index)
-                    messageData: ClaudeCode.messageByID[modelData]
-                    searchQuery: root.chatSearchQuery
-                    searchCurrent: root.chatSearchHit?.messageIndex === messageDelegate.messageIndex ? root.chatSearchHit.ordinal : -1
+
+                ScrollToBottomButton {
+                    target: messageListView
+                    reversed: true
                 }
             }
 
-            PagePlaceholder {
-                shown: ClaudeCode.messageIDs.length === 0
-                icon: ClaudeCode.available ? "neurology" : "sync_problem"
-                title: ClaudeCode.available ? "Claude" : Translation.tr("Claude Code not found")
-                description: ClaudeCode.available
-                    ? Translation.tr("Runs on your Claude subscription\nWorking directory: %1\nCtrl+Shift+O to clear").arg(ClaudeCode.workingDirectory)
-                    : Translation.tr("Install the Claude Code CLI, or set\nsidebar.claude.cliPath in the config")
-                shape: MaterialShape.Shape.Cookie9Sided
-            }
-
-            ScrollToBottomButton {
-                target: messageListView
-                reversed: true
+            BackgroundTaskGrid {
+                id: backgroundTaskGrid
+                anchors {
+                    left: parent.left
+                    right: parent.right
+                    bottom: parent.bottom
+                }
             }
         }
 
@@ -1280,52 +1303,6 @@ Item {
 
                         StyledToolTip {
                             text: Translation.tr("Claude is working — Esc to stop")
-                        }
-                    }
-
-                    Row { // Work still running in the background
-                        id: backgroundIndicator
-                        property bool hovered: backgroundHover.hovered
-                        readonly property int count: ClaudeCode.backgroundTasks.length
-                        visible: backgroundIndicator.count > 0
-                        spacing: 3
-
-                        MaterialSymbol {
-                            anchors.verticalCenter: parent.verticalCenter
-                            iconSize: Appearance.font.pixelSize.normal * ClaudeCode.textScale
-                            color: Appearance.colors.colPrimary
-                            text: "monitoring"
-
-                            SequentialAnimation on opacity {
-                                running: backgroundIndicator.visible
-                                loops: Animation.Infinite
-                                alwaysRunToEnd: true
-                                NumberAnimation { to: 0.35; duration: 800; easing.type: Easing.InOutQuad }
-                                NumberAnimation { to: 1; duration: 800; easing.type: Easing.InOutQuad }
-                            }
-                        }
-
-                        StyledText {
-                            anchors.verticalCenter: parent.verticalCenter
-                            font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
-                            color: Appearance.colors.colSubtext
-                            text: backgroundIndicator.count
-                        }
-
-                        HoverHandler {
-                            id: backgroundHover
-                        }
-
-                        StyledToolTip {
-                            text: {
-                                const running = ClaudeCode.backgroundTasks
-                                    .map(task => `• ${task.description}`)
-                                    .join("\n");
-                                const heading = backgroundIndicator.count === 1
-                                    ? Translation.tr("1 background task running")
-                                    : Translation.tr("%1 background tasks running").arg(backgroundIndicator.count);
-                                return running.length > 0 ? `${heading}\n${running}` : heading;
-                            }
                         }
                     }
 

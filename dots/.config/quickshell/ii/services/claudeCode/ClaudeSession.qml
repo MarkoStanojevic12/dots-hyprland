@@ -539,7 +539,7 @@ Scope {
         root.pendingPermission = null;
         root.pendingQuestion = null;
         root.queuedMessages = [];
-        root.backgroundTasks = [];
+        root.clearBackgroundTasks();
         root.resumeSessionId = "";
         root.unseen = false;
         root.spawnPending = false;
@@ -782,16 +782,172 @@ Scope {
     // the UI says the conversation is still waiting on something once `busy`
     // has gone false.
     //
-    // The CLI reports the whole current list on every launch and completion,
-    // so this mirrors it verbatim rather than inferring anything from tool
-    // calls. [{ taskId, description }]
-    property var backgroundTasks: []
+    // Membership comes from `background_tasks_changed`, which carries the whole
+    // live set every time; the task_* events only fill in what each one is
+    // doing. A task that ends stays listed for backgroundLingerMs so its card
+    // can show how it ended before it leaves.
+    //
+    // Ids and a lookup rather than a list of objects: progress lands every few
+    // seconds, and a fresh object each time would rebuild the card under the
+    // cursor.
+    property var backgroundTaskIds: []
+    // taskId -> { taskId, type, description, subagent, toolUseId, command,
+    //   outputFile, startedAt, toolUses, tokens, lastTool, summary,
+    //   status: running | completed | failed | stopped, endedAt }
+    property var backgroundTaskInfo: ({})
+    readonly property int backgroundLingerMs: 3000
+
+    function newTaskInfo(taskId, fields) {
+        return Object.assign({
+            taskId: taskId,
+            type: "",
+            description: "",
+            subagent: "",
+            toolUseId: "",
+            command: "",
+            outputFile: "",
+            startedAt: Date.now(),
+            toolUses: 0,
+            tokens: 0,
+            lastTool: "",
+            summary: "",
+            status: "running",
+            endedAt: 0
+        }, fields);
+    }
+
+    function patchTask(taskId, patch) {
+        const current = root.backgroundTaskInfo[taskId];
+        if (!current) return;
+        const info = Object.assign({}, root.backgroundTaskInfo);
+        info[taskId] = Object.assign({}, current, patch);
+        root.backgroundTaskInfo = info;
+    }
+
+    function findToolCall(toolUseId) {
+        for (let i = root.messageIDs.length - 1; i >= 0; --i) {
+            const call = (root.messageByID[root.messageIDs[i]]?.toolCalls ?? []).find(c => c.id === toolUseId);
+            if (call) return call;
+        }
+        return null;
+    }
+
+    // The CLI names a backgrounded command's output file only in the text of
+    // its tool result.
+    function backgroundOutputFile(text) {
+        const match = /Output is being written to: (.+?)\.(?:\s|$)/.exec(text ?? "");
+        return match ? match[1] : "";
+    }
+
+    function taskStarted(event) {
+        const toolUseId = event.tool_use_id ?? "";
+        const call = toolUseId.length > 0 ? root.findToolCall(toolUseId) : null;
+        const info = Object.assign({}, root.backgroundTaskInfo);
+        // Foreground tasks start here too; they are dropped again when they end
+        // without ever having joined the background set.
+        info[event.task_id] = root.newTaskInfo(event.task_id, {
+            type: event.task_type ?? "",
+            description: event.description ?? "",
+            subagent: event.subagent_type ?? event.workflow_name ?? "",
+            toolUseId: toolUseId,
+            command: call?.input?.command ?? "",
+            outputFile: root.backgroundOutputFile(call?.output)
+        });
+        root.backgroundTaskInfo = info;
+    }
+
+    function taskProgress(event) {
+        const current = root.backgroundTaskInfo[event.task_id];
+        if (!current) return;
+        root.patchTask(event.task_id, {
+            toolUses: event.usage?.tool_uses ?? current.toolUses,
+            tokens: event.usage?.total_tokens ?? current.tokens,
+            lastTool: event.last_tool_name ?? current.lastTool,
+            summary: event.summary ?? current.summary
+        });
+    }
+
+    function endTask(taskId, status) {
+        const current = root.backgroundTaskInfo[taskId];
+        if (!current) return;
+        if (!root.backgroundTaskIds.includes(taskId)) {
+            const info = Object.assign({}, root.backgroundTaskInfo);
+            delete info[taskId];
+            root.backgroundTaskInfo = info;
+            return;
+        }
+        root.patchTask(taskId, {
+            status: status === "failed" ? "failed" : (status === "stopped" || status === "killed") ? "stopped" : "completed",
+            endedAt: current.endedAt > 0 ? current.endedAt : Date.now()
+        });
+    }
 
     function updateBackgroundTasks(tasks) {
-        root.backgroundTasks = (tasks ?? []).map(task => ({
-            taskId: task.task_id ?? "",
-            description: task.description ?? ""
-        }));
+        const live = [];
+        const info = Object.assign({}, root.backgroundTaskInfo);
+        for (const task of (tasks ?? [])) {
+            const id = task.task_id ?? "";
+            if (id.length === 0) continue;
+            live.push(id);
+            info[id] = Object.assign(info[id] ?? root.newTaskInfo(id, {}), {
+                type: task.task_type ?? info[id]?.type ?? "",
+                description: task.description ?? info[id]?.description ?? ""
+            });
+        }
+        // Leaving the set is the end of the task even when its notification
+        // has not come in yet; a later one still corrects the outcome.
+        const now = Date.now();
+        for (const id of root.backgroundTaskIds) {
+            if (live.includes(id) || !info[id] || info[id].endedAt > 0) continue;
+            info[id] = Object.assign({}, info[id], {
+                status: info[id].status === "running" ? "completed" : info[id].status,
+                endedAt: now
+            });
+        }
+        const ids = root.backgroundTaskIds.filter(id => live.includes(id) || (info[id]?.endedAt ?? 0) > 0);
+        for (const id of live) {
+            if (!ids.includes(id)) ids.push(id);
+        }
+        root.backgroundTaskInfo = info;
+        root.backgroundTaskIds = ids;
+    }
+
+    function noteTaskOutputFile(toolUseId, text) {
+        const file = root.backgroundOutputFile(text);
+        if (file.length === 0) return;
+        for (const id of Object.keys(root.backgroundTaskInfo)) {
+            if (root.backgroundTaskInfo[id].toolUseId === toolUseId) root.patchTask(id, { outputFile: file });
+        }
+    }
+
+    function purgeEndedTasks() {
+        const now = Date.now();
+        const expired = root.backgroundTaskIds.filter(id => {
+            const endedAt = root.backgroundTaskInfo[id]?.endedAt ?? 0;
+            return endedAt > 0 && now - endedAt >= root.backgroundLingerMs;
+        });
+        if (expired.length === 0) return;
+        // Ids first, so no card outlives the details it reads.
+        root.backgroundTaskIds = root.backgroundTaskIds.filter(id => !expired.includes(id));
+        const info = Object.assign({}, root.backgroundTaskInfo);
+        for (const id of expired) delete info[id];
+        root.backgroundTaskInfo = info;
+    }
+
+    function clearBackgroundTasks() {
+        root.backgroundTaskIds = [];
+        root.backgroundTaskInfo = ({});
+    }
+
+    function stopBackgroundTask(taskId) {
+        root.sendControlRequest("stop_task", { task_id: taskId });
+    }
+
+    Timer {
+        interval: 500
+        repeat: true
+        running: root.backgroundTaskIds.some(id => (root.backgroundTaskInfo[id]?.endedAt ?? 0) > 0)
+        onTriggered: root.purgeEndedTasks()
     }
 
     // ------------------------------------------------------------------
@@ -875,6 +1031,16 @@ Scope {
                 root.manager.rememberTabs();
             } else if (event.subtype === "background_tasks_changed") {
                 root.updateBackgroundTasks(event.tasks);
+            } else if (event.subtype === "task_started") {
+                root.taskStarted(event);
+            } else if (event.subtype === "task_progress") {
+                root.taskProgress(event);
+            } else if (event.subtype === "task_updated") {
+                const status = event.patch?.status ?? "";
+                if (["completed", "failed", "killed"].includes(status)) root.endTask(event.task_id, status);
+                else if (event.patch?.description) root.patchTask(event.task_id, { description: event.patch.description });
+            } else if (event.subtype === "task_notification") {
+                root.endTask(event.task_id, event.status);
             }
             break;
 
@@ -1012,8 +1178,9 @@ Scope {
     function handleToolResults(message) {
         for (const block of (message?.content ?? [])) {
             if (block.type === "tool_result") {
-                root.resolveToolCall(block.tool_use_id, block.is_error ?? false,
-                    root.manager.toolResultText(block.content));
+                const text = root.manager.toolResultText(block.content);
+                root.resolveToolCall(block.tool_use_id, block.is_error ?? false, text);
+                root.noteTaskOutputFile(block.tool_use_id, text);
             }
         }
     }
@@ -1138,7 +1305,7 @@ Scope {
                 root.currentAssistantId = "";
             }
             // Background tasks are children of the process that just died.
-            root.backgroundTasks = [];
+            root.clearBackgroundTasks();
             // Whatever ended this process, the transcript it leaves behind is
             // resumable; claim it so the next spawn continues the conversation.
             if (root.sessionId.length > 0) root.resumeSessionId = root.sessionId;
