@@ -9,7 +9,22 @@ import qs.modules.common.widgets
 import qs.modules.common.functions
 
 ContentPage {
+    id: root
     forceWidth: true
+
+    readonly property list<string> accentPresets: ["#E53935", "#F4511E", "#FB8C00", "#FDD835", "#7CB342", "#00897B", "#039BE5", "#3949AB", "#8E24AA", "#D81B60"]
+
+    function applyAccent(hex: string): void {
+        Quickshell.execDetached([Directories.wallpaperSwitchScriptPath, "--noswitch", "--color", hex]);
+    }
+
+    function clearAccent(): void {
+        Quickshell.execDetached([Directories.wallpaperSwitchScriptPath, "--noswitch", "--color", "clear"]);
+    }
+
+    function pickAccentFromScreen(): void {
+        Quickshell.execDetached([Directories.wallpaperSwitchScriptPath, "--noswitch", "--color"]);
+    }
 
     Process {
         id: randomWallProc
@@ -52,6 +67,39 @@ ContentPage {
                     color: smallLightDarkPreferenceButton.colText
                 }
             }
+        }
+    }
+
+    component AccentSwatch: Rectangle {
+        id: accentSwatch
+        required property string swatchColor
+        readonly property bool active: (Config.options.appearance.palette.accentColor ?? "").toLowerCase() === swatchColor.toLowerCase()
+
+        signal clicked()
+
+        implicitWidth: 34
+        implicitHeight: 34
+        radius: active ? Appearance.rounding.small : implicitWidth / 2
+        color: swatchColor
+        border.width: 1
+        border.color: ColorUtils.transparentize(Appearance.m3colors.m3outline, 0.6)
+
+        Behavior on radius {
+            animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+        }
+
+        MaterialSymbol {
+            anchors.centerIn: parent
+            visible: accentSwatch.active
+            text: "check"
+            iconSize: 20
+            color: ColorUtils.isDark(accentSwatch.color) ? "#FFFFFF" : "#000000"
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: accentSwatch.clicked()
         }
     }
 
@@ -214,6 +262,117 @@ ContentPage {
                     "displayName": Translation.tr("Tonal Spot")
                 }
             ]
+        }
+
+        ContentSubsection {
+            title: Translation.tr("Accent color")
+            tooltip: Translation.tr("Locks the palette to one color instead of deriving it from the wallpaper.\nPick \"From wallpaper\" to go back.")
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                Rectangle {
+                    implicitWidth: 34
+                    implicitHeight: 34
+                    radius: implicitWidth / 2
+                    color: (Config.options.appearance.palette.accentColor ?? "").length > 0 ? Config.options.appearance.palette.accentColor : Appearance.m3colors.m3primary
+                    border.width: 1
+                    border.color: ColorUtils.transparentize(Appearance.m3colors.m3outline, 0.6)
+
+                    Behavior on color {
+                        animation: Appearance.animation.elementMoveFast.colorAnimation.createObject(this)
+                    }
+                }
+
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    Repeater {
+                        model: root.accentPresets
+
+                        AccentSwatch {
+                            required property string modelData
+                            swatchColor: modelData
+                            onClicked: root.applyAccent(modelData)
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                MaterialTextField {
+                    id: accentHexField
+                    Layout.fillWidth: true
+                    placeholderText: "#rrggbb"
+                    text: Config.options.appearance.palette.accentColor
+                    onAccepted: {
+                        const trimmed = text.trim();
+                        const value = trimmed.startsWith("#") ? trimmed : `#${trimmed}`;
+                        if (/^#[0-9a-fA-F]{6}$/.test(value))
+                            root.applyAccent(value);
+                        else
+                            text = Config.options.appearance.palette.accentColor;
+                    }
+
+                    Connections {
+                        target: Config.options.appearance.palette
+                        function onAccentColorChanged() {
+                            accentHexField.text = Config.options.appearance.palette.accentColor;
+                        }
+                    }
+                }
+
+                RippleButtonWithIcon {
+                    buttonRadius: Appearance.rounding.small
+                    materialIcon: "colorize"
+                    mainText: Translation.tr("Pick")
+                    onClicked: root.pickAccentFromScreen()
+                    StyledToolTip {
+                        text: Translation.tr("Pick a color from anywhere on screen")
+                    }
+                }
+
+                RippleButtonWithIcon {
+                    buttonRadius: Appearance.rounding.small
+                    materialIcon: "wallpaper"
+                    mainText: Translation.tr("From wallpaper")
+                    enabled: (Config.options.appearance.palette.accentColor ?? "").length > 0
+                    onClicked: root.clearAccent()
+                }
+            }
+        }
+
+        ContentSubsection {
+            title: Translation.tr("Custom theme")
+            tooltip: Translation.tr("Hand-written palettes from ~/.config/illogical-impulse/themes.\nA custom theme overrides the wallpaper colors and the scheme above.\nStart one from your current colors:\napplytheme.sh --export \"My theme\"")
+
+            Component.onCompleted: CustomThemes.refresh()
+
+            ConfigSelectionArray {
+                currentValue: CustomThemes.active
+                onSelected: newValue => {
+                    if (newValue.length === 0)
+                        CustomThemes.clear();
+                    else
+                        CustomThemes.apply(newValue);
+                }
+                options: [
+                    {
+                        "value": "",
+                        "displayName": Translation.tr("From wallpaper"),
+                        "icon": "wallpaper"
+                    }
+                ].concat(CustomThemes.list.map(theme => ({
+                    "value": theme.file,
+                    "displayName": theme.name,
+                    "icon": theme.mode === "light" ? "light_mode" : "dark_mode"
+                })))
+            }
         }
 
         ConfigSwitch {

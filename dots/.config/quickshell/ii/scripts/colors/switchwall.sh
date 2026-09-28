@@ -284,6 +284,14 @@ switch() {
 
     pre_process "$mode_flag"
 
+    # A custom theme outranks wallpaper colors: the image changes, the palette stays.
+    local custom_theme
+    custom_theme=$(jq -r '.appearance.palette.customTheme' "$SHELL_CONFIG_FILE" 2>/dev/null)
+    if [[ -n "$custom_theme" && "$custom_theme" != "null" ]]; then
+        "$SCRIPT_DIR/applytheme.sh" --reapply ${mode_flag:+--mode "$mode_flag"}
+        return
+    fi
+
     # Check if app and shell theming is enabled in config
     if [ -f "$SHELL_CONFIG_FILE" ]; then
         enable_apps_shell=$(jq -r '.appearance.wallpaperTheming.enableAppsAndShell' "$SHELL_CONFIG_FILE")
@@ -334,6 +342,10 @@ main() {
         local color="$1"
         jq --arg color "$color" '.appearance.palette.accentColor = $color' "$SHELL_CONFIG_FILE" > "$SHELL_CONFIG_FILE.tmp" && mv "$SHELL_CONFIG_FILE.tmp" "$SHELL_CONFIG_FILE"
     }
+    # Only for explicit --color: a wallpaper change must leave an active theme alone.
+    clear_custom_theme() {
+        jq '.appearance.palette.customTheme = ""' "$SHELL_CONFIG_FILE" > "$SHELL_CONFIG_FILE.tmp" && mv "$SHELL_CONFIG_FILE.tmp" "$SHELL_CONFIG_FILE"
+    }
 
     detect_scheme_type_from_image() {
         local img="$1"
@@ -363,6 +375,7 @@ main() {
                     set_accent_color $(hyprpicker --no-fancy)
                     shift
                 fi
+                clear_custom_theme
                 ;;
             --image)
                 imgpath="$2"
