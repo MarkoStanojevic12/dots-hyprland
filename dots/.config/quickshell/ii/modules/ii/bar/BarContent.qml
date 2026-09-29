@@ -358,6 +358,16 @@ Item { // Bar content region
                     WeatherBar {}
                 }
             }
+
+            Loader {
+                Layout.leftMargin: 4
+                active: Jira.configured && (Jira.activeKey !== "" || Jira.popupOpen)
+                visible: active
+
+                sourceComponent: BarGroup {
+                    JiraTicket {}
+                }
+            }
         }
     }
 }
