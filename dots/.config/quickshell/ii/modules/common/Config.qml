@@ -241,6 +241,9 @@ Singleton {
                 property bool borderless: false // true for no grouping of items
                 property string topLeftIcon: "spark" // Options: "distro" or any icon name in ~/.config/quickshell/ii/assets/icons
                 property bool showBackground: true
+                // Lets the wallpaper show through the bar, blurred. Never goes
+                // below appearance.transparency, so 0 keeps the shell-wide look.
+                property real transparency: 0
                 property bool verbose: true
                 property bool vertical: false
                 property JsonObject resources: JsonObject {

@@ -5,6 +5,7 @@ hl.window_rule({match = {class = "^()$", title = "^()$" },                   no_
 
 -- Disable blur for every window
 hl.window_rule({match = {class = ".*" }, no_blur = true })
+hl.window_rule({match = {class = "^(kitty)$" }, no_blur = false })
 
 -- Floating
 hl.window_rule({match = {title = "^(Open File)(.*)$" },                      center = true})
@@ -161,6 +162,10 @@ hl.layer_rule({ match = { namespace = "quickshell:session" }, ignore_alpha = 0})
 -- 270ms emphasizedDecel in, 240ms menu_accel out.
 hl.layer_rule({ match = { namespace = "quickshell:sidebarRight" }, no_anim = true})
 hl.layer_rule({ match = { namespace = "quickshell:sidebarLeft" }, no_anim = true})
+-- Same for the bar's transparency slider. The strip below the bar (room for the
+-- screen corners) is alpha 0, so the floor keeps blur off it.
+hl.layer_rule({ match = { namespace = "quickshell:bar" }, ignore_alpha = 0.05})
+hl.layer_rule({ match = { namespace = "quickshell:verticalBar" }, ignore_alpha = 0.05})
 -- The sidebar transparency slider takes these backgrounds below the generic 0.79
 -- threshold above, which would skip the blur entirely. The margins around the
 -- panels are alpha 0, so a floor just above zero blurs them but not the gaps.

@@ -139,6 +139,19 @@ ContentPage {
                 }
             }
         }
+
+        ConfigSlider {
+            text: Translation.tr("Transparency")
+            buttonIcon: "blur_on"
+            usePercentTooltip: false
+            from: 0
+            to: 90
+            stopIndicatorValues: [0]
+            value: Config.options.bar.transparency * 100
+            onValueChanged: {
+                Config.options.bar.transparency = value / 100;
+            }
+        }
     }
 
     ContentSection {

@@ -51,7 +51,7 @@ hl.config({
         gaps_out = 5,
         gaps_workspaces = 50,
 
-        border_size = 1,
+        border_size = 2,
 
         col = {
             active_border = "rgba(0DB7D455)",
@@ -151,6 +151,10 @@ hl.curve("stall", {
     type = "bezier",
     points = {{1, -0.1}, {0.7, 0.85}}
 })
+hl.curve("linear", {
+    type = "bezier",
+    points = {{0, 0}, {1, 1}}
+})
 -- Configs
 -- windows
 hl.animation({
@@ -191,6 +195,13 @@ hl.animation({
     enabled = true,
     speed = 10,
     bezier = "emphasizedDecel"
+})
+hl.animation({
+    leaf = "borderangle",
+    enabled = true,
+    speed = 100,
+    bezier = "linear",
+    style = "loop"
 })
 
 -- layers
