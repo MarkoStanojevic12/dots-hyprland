@@ -54,6 +54,32 @@ fetch() {
 
 need_key() { [[ "${1:-}" =~ ^[A-Z][A-Z0-9]+-[0-9]+$ ]] || fail "not an issue key: ${1:-}" 2; }
 
+# comment_adf TEXT [MENTIONS_JSON] -> ADF document. Blank lines split
+# paragraphs, single newlines become hard breaks, and "@Display Name" becomes
+# a mention node when the name is in MENTIONS_JSON ({"Display Name": accountId}).
+comment_adf() {
+    jq -cn --arg text "$1" --argjson mentions "${2:-{\}}" '
+        def escape_re: gsub("(?<c>[\\\\.*+?^${}()|\\[\\]])"; "\\\(.c)");
+        ($mentions | keys | sort_by(-length) | map(escape_re) | join("|")) as $names
+        | (if $names == "" then null else "@(\($names))" end) as $pattern
+        | def inline: . as $line
+            | if $pattern == null then [{type: "text", text: $line}] else
+              [match($pattern; "g")] as $ms
+              | reduce $ms[] as $m ({pos: 0, out: []};
+                  .out += (if $m.offset > .pos then [{type: "text", text: $line[.pos:$m.offset]}] else [] end)
+                  | .out += [{type: "mention", attrs: {id: $mentions[$m.captures[0].string], text: "@\($m.captures[0].string)"}}]
+                  | .pos = $m.offset + $m.length)
+              | .out + (if .pos < ($line | length) then [{type: "text", text: $line[.pos:]}] else [] end)
+              end;
+        {body: {type: "doc", version: 1, content: [
+            $text | sub("^\\s+"; "") | sub("\\s+$"; "") | split("\n\n")[] | select(test("\\S")) | {type: "paragraph", content: [
+                split("\n") | to_entries[] |
+                    (if .key > 0 then {type: "hardBreak"} else empty end),
+                    (select(.value != "") | .value | inline[])
+            ]}
+        ]}}'
+}
+
 cmd=${1:-}; shift || true
 case "$cmd" in
 issue)
@@ -95,14 +121,7 @@ transition)
 comment)
     need_key "${1:-}"
     [[ "${2:-}" =~ [^[:space:]] ]] || fail "empty comment" 2
-    # Blank lines split paragraphs, single newlines become hard breaks.
-    payload=$(jq -cn --arg text "$2" '{body: {type: "doc", version: 1, content: [
-        $text | sub("^\\s+"; "") | sub("\\s+$"; "") | split("\n\n")[] | select(test("\\S")) | {type: "paragraph", content: [
-            split("\n") | to_entries[] |
-                (if .key > 0 then {type: "hardBreak"} else empty end),
-                (select(.value != "") | {type: "text", text: .value})
-        ]}
-    ]}}')
+    payload=$(comment_adf "$2" "${3:-}") || fail "bad mentions map" 2
     fetch body POST "issue/$1/comment" "$payload"
     echo '{"ok":true}'
     ;;
@@ -125,6 +144,13 @@ users)
     fetch body GET "user/assignable/search?issueKey=$1&query=$query&maxResults=8"
     jq -c '[.[] | {id: .accountId, name: .displayName}]' <<<"$body"
     ;;
+mentionable)
+    # Anyone who can see the issue, for @mentions in comments.
+    need_key "${1:-}"
+    query=$(jq -rn --arg q "${2:-}" '$q | @uri')
+    fetch body GET "user/viewissue/search?issueKey=$1&query=$query&maxResults=6"
+    jq -c '[.[] | select(.accountType == "atlassian" and .active) | {id: .accountId, name: .displayName}]' <<<"$body"
+    ;;
 branch)
     # The repo whose HEAD moved last wins, so a fresh checkout takes over.
     best_key=""; best_repo=""; best_time=0
@@ -142,7 +168,62 @@ branch)
     jq -cn --arg key "$best_key" --arg repo "$best_repo" --argjson time "$best_time" \
         'if $key == "" then {key: null} else {key: $key, repo: $repo, time: $time} end'
     ;;
+events)
+    # Other people's assignments to me, comments on issues I'm assigned to,
+    # reported or watch, and mentions of me anywhere, since $1 (epoch ms).
+    [[ "${1:-}" =~ ^[0-9]+$ ]] || fail "events needs a since time in ms" 2
+    since=$1
+    now=$(date +%s%3N)
+    fetch me GET myself
+    minutes=$(( (now - since) / 60000 + 2 ))
+    query=$(jq -rn --arg jql "updated >= -${minutes}m ORDER BY updated DESC" \
+        '"jql=\($jql | @uri)&fields=summary,assignee,reporter,creator,created,watches,comment,description&expand=changelog&maxResults=50"')
+    fetch body GET "search/jql?$query"
+    jq -c --arg me "$(jq -r .accountId <<<"$me")" --arg site "$site" --argjson since "$since" --argjson now "$now" '
+        # Jira writes 2026-09-30T12:41:23.053+0200; fromdateiso8601 only takes Z.
+        def ms: capture("^(?<d>[0-9-]+T[0-9:]+)(\\.(?<f>[0-9]+))?(?<s>[+-])(?<h>[0-9]{2}):?(?<m>[0-9]{2})$") as $c
+            | ($c.d + "Z" | fromdateiso8601)
+              - (if $c.s == "+" then 1 else -1 end) * (($c.h | tonumber) * 3600 + ($c.m | tonumber) * 60)
+            | . * 1000 + (($c.f // "0")[0:3] | tonumber);
+        def recent: ms >= $since;
+        def plain: [.. | objects | if .type == "text" then .text elif .type == "mention" then .attrs.text
+            elif .type == "paragraph" or .type == "hardBreak" then "\n" else empty end]
+            | join("") | gsub("^\\s+|\\s+$"; "") | if length > 300 then .[0:300] + "…" else . end;
+        def mentions($id): any(.. | objects; .type == "mention" and .attrs.id == $id);
+        {now: $now, events: [.issues[] | .key as $key | .fields as $f
+            | ($f.assignee.accountId == $me or $f.reporter.accountId == $me or ($f.watches.isWatching // false)) as $mine
+            | {key: $key, summary: $f.summary, url: "\($site)/browse/\($key)"} + (
+                ($f | select(.created | recent) | select(.creator.accountId != $me)
+                    | {author: (.creator.displayName // "Someone"), time: (.created | ms)} as $by
+                    | (select(.assignee.accountId == $me) | $by + {id: "created:\($key):assigned", type: "assigned", text: ""}),
+                      (select(.description // {} | mentions($me)) | $by + {id: "created:\($key):mention", type: "mention", text: (.description | plain)})),
+                (.changelog.histories[]? | select(.created | recent) | select(.author.accountId != $me) | . as $h
+                    | {author: ($h.author.displayName // "Someone"), time: ($h.created | ms)} as $by
+                    | .items[]
+                    | (select(.fieldId == "assignee" and .to == $me) | $by + {id: "history:\($h.id):assignee", type: "assigned", text: ""}),
+                      # Changelog descriptions are wiki markup, where a mention is [~accountid:ID].
+                      (select(.fieldId == "description"
+                              and ((.toString // "") | contains("accountid:" + $me))
+                              and ((.fromString // "") | contains("accountid:" + $me) | not))
+                          | $by + {id: "history:\($h.id):description", type: "mention", text: "in the description"})),
+                ($f.comment.comments[]? | select(.created | recent) | select(.author.accountId != $me)
+                    | (if (.body | mentions($me)) then "mention" elif $mine then "comment" else empty end) as $type
+                    | {id: "comment:\(.id)", type: $type, author: (.author.displayName // "Someone"),
+                       text: (.body | plain), time: (.created | ms)})
+            )] | sort_by(.time)}' <<<"$body"
+    ;;
+notify)
+    # notify KEY URL TITLE BODY -- blocks until the notification is acted on
+    # or closed, so run it detached.
+    need_key "${1:-}"
+    shell_dir=$(cd "$(dirname "$0")/../.." && pwd)
+    action=$(timeout 12h notify-send -a Jira -A open="Open in browser" -A pin=Pin "${3:-$1}" "${4:-}")
+    case "$action" in
+        open) xdg-open "$2" ;;
+        pin) qs -p "$shell_dir" ipc call jira pin "$1" ;;
+    esac
+    ;;
 *)
-    fail "usage: jira.sh issue|transitions|transition|comment|assign|users|branch ..." 2
+    fail "usage: jira.sh issue|transitions|transition|comment|assign|users|mentionable|branch|events|notify ..." 2
     ;;
 esac

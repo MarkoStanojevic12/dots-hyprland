@@ -18,6 +18,10 @@ import Quickshell.Hyprland
  *
  * Site, account and repos come from ~/.config/illogical-impulse/jira.json and
  * the API token from the keyring -- see scripts/jira/jira.sh. No file, no chip.
+ *
+ * Also polls for other people's activity that concerns me and sends it as
+ * desktop notifications. Jira Cloud webhooks need a public endpoint, hence
+ * the polling.
  */
 Singleton {
     id: root
@@ -42,6 +46,7 @@ Singleton {
     property var issue: null
     property var transitions: []
     property var assignableUsers: []
+    property var mentionableUsers: []
     property bool loading: false
     property string pendingAction: ""
     property string error: ""
@@ -128,6 +133,16 @@ Singleton {
         usersProcess.running = true;
     }
 
+    function searchMentionable(query) {
+        if (mentionProcess.running) {
+            mentionProcess.queued = query;
+            return;
+        }
+        mentionProcess.queued = null;
+        mentionProcess.command = [root.script, "mentionable", root.activeKey, query];
+        mentionProcess.running = true;
+    }
+
     function run(action, args) {
         if (actionProcess.running || root.activeKey === "") return false;
         root.pendingAction = action;
@@ -138,8 +153,29 @@ Singleton {
     }
 
     function transition(id) { return root.run("transition", [id]); }
-    function comment(text) { return root.run("comment", [text]); }
+    // mentions maps "Display Name" -> accountId for the @names in text.
+    function comment(text, mentions) { return root.run("comment", [text, JSON.stringify(mentions ?? {})]); }
     function assign(accountId) { return root.run("assign", [accountId]); }
+
+    // Polls overlap by a minute because Jira's search index lags behind
+    // writes; seenEvents drops the repeats. After a long gap only the last
+    // half hour is reported, not a backlog.
+    function pollEvents() {
+        if (!root.configured || eventsProcess.running) return;
+        const now = Date.now();
+        const since = Math.max(persisted.eventsSince || now, now - 30 * 60 * 1000) - 60 * 1000;
+        eventsProcess.command = [root.script, "events", String(Math.floor(since))];
+        eventsProcess.running = true;
+    }
+
+    function notifyEvent(event) {
+        const title = event.type === "assigned" ? `${event.author} assigned you ${event.key}`
+            : event.type === "mention" ? `${event.author} mentioned you in ${event.key}`
+            : `${event.author} commented on ${event.key}`;
+        const body = [event.summary, event.text].filter(part => part).join("\n")
+            .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        Quickshell.execDetached([root.script, "notify", event.key, event.url, title, body]);
+    }
 
     function parse(text) {
         try {
@@ -191,6 +227,8 @@ Singleton {
             property string pinnedKey: ""
             property string touchedKey: ""
             property real touchedAt: 0
+            property real eventsSince: 0
+            property list<string> seenEvents: []
         }
     }
 
@@ -206,6 +244,30 @@ Singleton {
         interval: 5 * 60 * 1000
         repeat: true
         onTriggered: root.refresh()
+    }
+
+    Timer {
+        running: root.configured
+        interval: 5 * 60 * 1000
+        repeat: true
+        triggeredOnStart: true
+        onTriggered: root.pollEvents()
+    }
+
+    Process {
+        id: eventsProcess
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const result = root.parse(text);
+                if (result.error || !Array.isArray(result.events)) return;
+                const seen = new Set(persisted.seenEvents);
+                const fresh = result.events.filter(event => !seen.has(event.id));
+                fresh.forEach(root.notifyEvent);
+                persisted.seenEvents = [...persisted.seenEvents, ...fresh.map(event => event.id)].slice(-200);
+                persisted.eventsSince = result.now;
+                if (fresh.some(event => event.key === root.activeKey)) root.refresh();
+            }
+        }
     }
 
     Process {
@@ -267,6 +329,21 @@ Singleton {
     }
 
     Process {
+        id: mentionProcess
+        property var queued: null
+        stdout: StdioCollector {
+            onStreamFinished: {
+                const result = root.parse(text);
+                root.mentionableUsers = Array.isArray(result) ? result : [];
+                if (mentionProcess.queued !== null) {
+                    const query = mentionProcess.queued;
+                    Qt.callLater(() => root.searchMentionable(query));
+                }
+            }
+        }
+    }
+
+    Process {
         id: actionProcess
         stdout: StdioCollector {
             onStreamFinished: {
@@ -288,6 +365,7 @@ Singleton {
         function toggle(): void { root.togglePopup(root.focusedScreenName()); }
         function pin(key: string): void { root.pin(key); }
         function unpin(): void { root.unpin(); }
+        function poll(): void { root.pollEvents(); }
 
         function state(): string {
             return [

@@ -219,7 +219,7 @@ LazyLoader {
 
         function sendComment() {
             const text = commentField.text.trim();
-            if (text.length > 0 && Jira.pendingAction === "") Jira.comment(text);
+            if (text.length > 0 && Jira.pendingAction === "") Jira.comment(text, commentField.mentions);
         }
 
         screen: root.anchorItem.QsWindow.window?.screen ?? null
@@ -266,7 +266,10 @@ LazyLoader {
                 popupWindow.menu = "";
             }
             function onActionFinished(action, ok) {
-                if (action === "comment" && ok) commentField.text = "";
+                if (action === "comment" && ok) {
+                    commentField.text = "";
+                    commentField.mentions = {};
+                }
             }
         }
 
@@ -717,6 +720,21 @@ LazyLoader {
                     }
                 }
 
+                MenuPanel {
+                    id: mentionPicker
+                    visible: commentField.mentionStart >= 0 && Jira.mentionableUsers.length > 0
+                    Repeater {
+                        model: Jira.mentionableUsers
+                        delegate: MenuEntry {
+                            required property var modelData
+                            required property int index
+                            personName: modelData.name
+                            colBackground: index === commentField.mentionIndex ? Appearance.colors.colLayer1Hover : "transparent"
+                            releaseAction: () => commentField.insertMention(modelData)
+                        }
+                    }
+                }
+
                 RowLayout {
                     Layout.fillWidth: true
                     visible: !!popupWindow.issue
@@ -724,13 +742,69 @@ LazyLoader {
 
                     ToolbarTextField {
                         id: commentField
+                        // "Display Name" -> accountId for every person picked; jira.sh
+                        // turns the matching @names into mention nodes.
+                        property var mentions: ({})
+                        property int mentionStart: -1
+                        property string mentionQuery: ""
+                        property int mentionIndex: 0
+
                         Layout.fillWidth: true
                         Layout.fillHeight: false
                         implicitHeight: 40
                         colBackground: Appearance.colors.colLayer2
                         placeholderText: Translation.tr("Comment on %1…").arg(Jira.activeKey)
-                        onAccepted: popupWindow.sendComment()
-                        Keys.onEscapePressed: Jira.popupOpen = false
+
+                        function updateMention() {
+                            const match = /(^|\s)@([^@\s][^@]{0,40})$/.exec(text.slice(0, cursorPosition));
+                            const query = match ? match[2] : "";
+                            mentionStart = match ? cursorPosition - query.length - 1 : -1;
+                            if (query === mentionQuery) return;
+                            mentionQuery = query;
+                            mentionIndex = 0;
+                            if (query === "") Jira.mentionableUsers = [];
+                            else mentionDebounce.restart();
+                        }
+
+                        function insertMention(user) {
+                            const name = `@${user.name} `;
+                            const before = text.slice(0, mentionStart);
+                            const after = text.slice(cursorPosition);
+                            mentions[user.name] = user.id;
+                            text = before + name + after;
+                            cursorPosition = before.length + name.length;
+                            Jira.mentionableUsers = [];
+                            mentionStart = -1;
+                            mentionQuery = "";
+                        }
+
+                        onTextChanged: updateMention()
+                        onCursorPositionChanged: updateMention()
+                        onAccepted: {
+                            if (mentionPicker.visible) insertMention(Jira.mentionableUsers[mentionIndex]);
+                            else popupWindow.sendComment();
+                        }
+                        Keys.onTabPressed: event => {
+                            if (mentionPicker.visible) insertMention(Jira.mentionableUsers[mentionIndex]);
+                            else event.accepted = false;
+                        }
+                        Keys.onUpPressed: event => {
+                            if (mentionPicker.visible) mentionIndex = (mentionIndex + Jira.mentionableUsers.length - 1) % Jira.mentionableUsers.length;
+                            else event.accepted = false;
+                        }
+                        Keys.onDownPressed: event => {
+                            if (mentionPicker.visible) mentionIndex = (mentionIndex + 1) % Jira.mentionableUsers.length;
+                            else event.accepted = false;
+                        }
+                        Keys.onEscapePressed: {
+                            if (mentionPicker.visible) Jira.mentionableUsers = [];
+                            else Jira.popupOpen = false;
+                        }
+                        Timer {
+                            id: mentionDebounce
+                            interval: 300
+                            onTriggered: if (commentField.mentionQuery !== "") Jira.searchMentionable(commentField.mentionQuery)
+                        }
                     }
                     IconButton {
                         implicitWidth: 40
