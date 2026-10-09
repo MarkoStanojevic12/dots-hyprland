@@ -8,6 +8,7 @@ RippleButton {
     id: root
 
     property bool showPing: false
+    readonly property bool claudeWorking: ClaudeCode.anyBusy
 
     property bool aiChatEnabled: Config.options.policies.ai !== 0
     property bool translatorEnabled: Config.options.sidebar.translator.enable
@@ -46,6 +47,14 @@ RippleButton {
     }
 
     Connections {
+        target: ClaudeCode
+        function onAnyBusyChanged() {
+            if (ClaudeCode.anyBusy || GlobalStates.sidebarLeftOpen) return;
+            root.showPing = true;
+        }
+    }
+
+    Connections {
         target: GlobalStates
         function onSidebarLeftOpenChanged() {
             root.showPing = false;
@@ -60,24 +69,49 @@ RippleButton {
         source: Config.options.bar.topLeftIcon == 'distro' ? SystemInfo.distroIcon : `${Config.options.bar.topLeftIcon}-symbolic`
         colorize: true
         color: Appearance.colors.colOnLayer0
+        opacity: root.claudeWorking ? 0 : 1
+        scale: root.claudeWorking ? 0.5 : 1
+        visible: opacity > 0
 
-        Rectangle {
-            opacity: root.showPing ? 1 : 0
-            visible: opacity > 0
-            anchors {
-                bottom: parent.bottom
-                right: parent.right
-                bottomMargin: -2
-                rightMargin: -2
-            }
-            implicitWidth: 8
-            implicitHeight: 8
-            radius: Appearance.rounding.full
-            color: Appearance.colors.colTertiary
+        Behavior on opacity {
+            animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+        }
+        Behavior on scale {
+            animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+        }
+    }
 
-            Behavior on opacity {
-                animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
-            }
+    FadeLoader {
+        anchors.centerIn: parent
+        shown: root.claudeWorking
+        scale: shown ? 1 : 0.5
+
+        Behavior on scale {
+            animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
+        }
+
+        sourceComponent: MaterialLoadingIndicator {
+            implicitSize: 24
+            loading: true
+        }
+    }
+
+    Rectangle {
+        opacity: root.showPing && !root.claudeWorking ? 1 : 0
+        visible: opacity > 0
+        anchors {
+            bottom: distroIcon.bottom
+            right: distroIcon.right
+            bottomMargin: -2
+            rightMargin: -2
+        }
+        implicitWidth: 8
+        implicitHeight: 8
+        radius: Appearance.rounding.full
+        color: Appearance.colors.colTertiary
+
+        Behavior on opacity {
+            animation: Appearance.animation.elementMoveFast.numberAnimation.createObject(this)
         }
     }
 }
