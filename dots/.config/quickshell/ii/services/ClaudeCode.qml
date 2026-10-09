@@ -660,6 +660,62 @@ Singleton {
         return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
     }
 
+    // Percent-of-plan per window, from the same endpoint `/usage` reads. The
+    // CLI's rate_limit_event only says whether you are throttled, not how close.
+    // [{ key, label, utilization, resetsAt, usedDollars, limitDollars }]
+    property var planUsage: []
+    property real planUsageFetchedAt: 0
+    readonly property string planUsageScript: Quickshell.shellPath("scripts/claude/usage.py")
+
+    function refreshPlanUsage(maxAgeMs) {
+        if (planUsageProcess.running) return;
+        if (maxAgeMs > 0 && Date.now() - root.planUsageFetchedAt < maxAgeMs) return;
+        planUsageProcess.running = true;
+    }
+
+    function formatResetTime(epochSeconds) {
+        const remaining = epochSeconds * 1000 - Date.now();
+        if (remaining <= 0) return "";
+        const days = Math.floor(remaining / 86400000);
+        const hours = Math.floor((remaining % 86400000) / 3600000);
+        const minutes = Math.floor((remaining % 3600000) / 60000);
+        if (days > 0) return `${days}d ${hours}h`;
+        return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+    }
+
+    readonly property string planUsageText: {
+        return root.planUsage.map(limit => {
+            const amount = limit.limitDollars
+                ? `$${(limit.usedDollars ?? 0).toFixed(2)} / $${limit.limitDollars}`
+                : `${Math.round(limit.utilization)}%`;
+            const reset = root.formatResetTime(limit.resetsAt);
+            return reset.length > 0
+                ? Translation.tr("%1: %2 · resets in %3").arg(limit.label).arg(amount).arg(reset)
+                : `${limit.label}: ${amount}`;
+        }).join("\n");
+    }
+
+    Process {
+        id: planUsageProcess
+        command: ["python3", root.planUsageScript]
+        stdout: StdioCollector {
+            id: planUsageCollector
+            onStreamFinished: {
+                try {
+                    const result = JSON.parse(planUsageCollector.text);
+                    if (result.limits) {
+                        root.planUsage = result.limits;
+                        root.planUsageFetchedAt = Date.now();
+                    } else {
+                        console.warn("[ClaudeCode] plan usage:", result.error);
+                    }
+                } catch (e) {
+                    console.warn("[ClaudeCode] plan usage: bad output");
+                }
+            }
+        }
+    }
+
     // ------------------------------------------------------------------
     // Slash commands
     // ------------------------------------------------------------------

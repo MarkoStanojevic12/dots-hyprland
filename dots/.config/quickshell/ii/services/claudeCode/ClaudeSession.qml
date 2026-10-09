@@ -1189,6 +1189,7 @@ Scope {
         // spent the time, so close the thought before the message goes final.
         root.flushThought();
         root.updateContextLimit(event.modelUsage);
+        root.manager.refreshPlanUsage(0);
         // A turn that came back at all proves the credentials are good, which
         // also clears the card after a sign-in the sidebar never saw happen.
         if (!event.is_error && event.subtype === "success") root.manager.signedOut = false;

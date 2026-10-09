@@ -1355,6 +1355,7 @@ Item {
                             id: contextMouseArea
                             anchors.fill: parent
                             hoverEnabled: true
+                            onContainsMouseChanged: if (containsMouse) ClaudeCode.refreshPlanUsage(60000)
                         }
 
                         StyledToolTip {
@@ -1363,6 +1364,7 @@ Item {
                                 .arg(ClaudeCode.formatTokens(contextIndicator.compactLimit))
                                 .arg(Math.round(contextIndicator.compactFraction * 100))
                                 .arg(ClaudeCode.formatTokens(ClaudeCode.effectiveContextLimit))
+                                + (ClaudeCode.planUsageText.length > 0 ? "\n\n" + ClaudeCode.planUsageText : "")
                         }
                     }
 
