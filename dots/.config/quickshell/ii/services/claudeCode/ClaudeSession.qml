@@ -209,8 +209,6 @@ Scope {
     }
 
     function handlePermissionRequest(event) {
-        root.manager.playInputNeededSound();
-        if (!root.active) root.unseen = true;
         const request = event.request;
         if (request.tool_name === "AskUserQuestion") {
             root.pendingQuestion = {
@@ -219,17 +217,18 @@ Scope {
                 input: request.input ?? ({}),
                 toolUseId: request.tool_use_id ?? ""
             };
-            return;
+        } else {
+            root.pendingPermission = {
+                requestId: event.request_id,
+                toolName: request.tool_name ?? "",
+                displayName: request.display_name ?? request.tool_name ?? "",
+                description: request.description ?? "",
+                input: request.input ?? ({}),
+                suggestions: request.permission_suggestions ?? [],
+                toolUseId: request.tool_use_id ?? ""
+            };
         }
-        root.pendingPermission = {
-            requestId: event.request_id,
-            toolName: request.tool_name ?? "",
-            displayName: request.display_name ?? request.tool_name ?? "",
-            description: request.description ?? "",
-            input: request.input ?? ({}),
-            suggestions: request.permission_suggestions ?? [],
-            toolUseId: request.tool_use_id ?? ""
-        };
+        root.manager.requestInput(root);
     }
 
     // `remember` is one of the CLI's own permission_suggestions, or null for

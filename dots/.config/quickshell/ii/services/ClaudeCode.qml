@@ -610,9 +610,19 @@ Singleton {
     // Answering prompts
     // ------------------------------------------------------------------
 
-    // Both branches park a turn until you answer, so the sound belongs here
-    // rather than being duplicated into each. With several tabs running it is
-    // also the only cue that a conversation you aren't looking at is waiting.
+    // A prompt parks the turn until it is answered, so the waiting tab is
+    // brought to the front and the sidebar is asked to open on it — the
+    // service can't reach GlobalStates without an import cycle.
+    signal inputRequested
+
+    function requestInput(session) {
+        root.playInputNeededSound();
+        const index = root.tabs.indexOf(session);
+        if (index >= 0) root.activateTab(index);
+        else session.unseen = true;
+        root.inputRequested();
+    }
+
     function playInputNeededSound() {
         const command = root.options?.soundCommand ?? "";
         const file = root.options?.inputNeededSound ?? "";

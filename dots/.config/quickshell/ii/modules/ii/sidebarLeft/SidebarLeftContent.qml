@@ -1,3 +1,4 @@
+import qs
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
@@ -27,6 +28,17 @@ Item {
 
     function focusActiveItem() {
         swipeView.currentItem.forceActiveFocus()
+    }
+
+    Connections {
+        target: ClaudeCode
+        function onInputRequested() {
+            if (!root.claudeEnabled) return;
+            // A method call, not an assignment: assigning would break the
+            // two-way binding between the tab bar and the pages.
+            swipeView.setCurrentIndex(0);
+            GlobalStates.sidebarLeftOpen = true;
+        }
     }
 
     Keys.onPressed: (event) => {
