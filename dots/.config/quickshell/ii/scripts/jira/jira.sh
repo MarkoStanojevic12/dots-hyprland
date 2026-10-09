@@ -107,6 +107,11 @@ issue)
                 }] | .[-5:]
             }' <<<"$body"
     ;;
+summary)
+    need_key "${1:-}"
+    fetch body GET "issue/$1?fields=summary"
+    jq -c '{key, summary: .fields.summary}' <<<"$body"
+    ;;
 transitions)
     need_key "${1:-}"
     fetch body GET "issue/$1/transitions"

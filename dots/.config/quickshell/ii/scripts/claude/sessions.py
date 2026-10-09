@@ -24,7 +24,7 @@ PROJECTS = os.path.join(HOME, ".claude", "projects")
 MAX_SESSIONS = 60
 TITLE_LIMIT = 90
 
-CATEGORIES = ("Coding", "Hyprland", "Misc")
+CATEGORIES = ("Tickets", "Coding", "Hyprland", "Misc")
 
 # A path under any of these means the conversation was desktop-config work.
 DESKTOP_MARKERS = (
@@ -52,6 +52,14 @@ TITLE_MODEL = "claude-haiku-4-5-20251001"
 TITLE_BATCH = 8  # Untitled conversations to name per `retitle` run.
 DIGEST_PROMPTS = 8
 DIGEST_CHARS = 240
+
+# A conversation in which Claude started work on a Jira ticket (ran the
+# jira:ticket skill) is titled "KEY summary" from Jira instead of by the
+# model, and listed under Tickets. A key merely mentioned in the text does
+# not count -- tickets come up in passing all the time.
+JIRA_SCRIPT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "jira", "jira.sh")
+TICKET_SKILL = "jira:ticket"
+KEY_RE = re.compile(r"[A-Z][A-Z0-9]+-\d+")
 
 TITLE_PROMPT = """\
 You are naming Claude Code conversations for a sidebar history list.
@@ -197,12 +205,50 @@ def categorize(paths):
     return "Misc"
 
 
+def ticket_started(message):
+    """The key the jira:ticket skill was run for in this turn, or ""."""
+    for block in blocks_of(message):
+        if block.get("type") != "tool_use" or block.get("name") != "Skill":
+            continue
+        params = block.get("input") or {}
+        if params.get("skill") != TICKET_SKILL:
+            continue
+        match = KEY_RE.search(str(params.get("args") or ""))
+        if match:
+            return match.group(0)
+    return ""
+
+
+def jira_summary(key):
+    """(summary or None, missing). Missing means Jira says no such issue."""
+    try:
+        finished = subprocess.run(
+            [JIRA_SCRIPT, "summary", key],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        result = json.loads(finished.stdout)
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return None, False
+    if not isinstance(result, dict):
+        return None, False
+    if str(result.get("error") or "").startswith("HTTP 404"):
+        return None, True
+    summary = result.get("summary")
+    if isinstance(summary, str) and summary.strip():
+        return " ".join(summary.split()), False
+    return None, False
+
+
 def summarize(path, cwd):
     prompts = []
     turns = 0
     session = ""
     confirmed = False
     paths = set()
+    ticket = ""
 
     for entry in entries(path):
         entry_cwd = entry.get("cwd")
@@ -217,17 +263,21 @@ def summarize(path, cwd):
             if text and len(prompts) < DIGEST_PROMPTS:
                 prompts.append(text[:DIGEST_CHARS])
         elif entry.get("type") == "assistant":
-            paths.update(tool_paths(entry.get("message") or {}))
+            message = entry.get("message") or {}
+            paths.update(tool_paths(message))
+            ticket = ticket or ticket_started(message)
 
     if not confirmed or turns == 0:
         return None
     return {
         "id": session or os.path.basename(path)[: -len(".jsonl")],
         "title": prompts[0][:TITLE_LIMIT] if prompts else "(no prompt)",
+        "ticket": ticket,
         "mtime": int(os.path.getmtime(path)),
         "turns": turns,
-        "category": categorize(paths),
+        "category": "Tickets" if ticket else categorize(paths),
         "prompts": prompts,
+        "paths": sorted(paths),
     }
 
 
@@ -261,7 +311,24 @@ def needs_title(item, titles):
     cached = titles.get(item["id"])
     if not cached or not cached.get("title"):
         return True
+    if (cached.get("ticket") or "") != item["ticket"] and not cached.get("missing"):
+        return True  # Ticket work started, or an older rule named it wrongly.
+    if item["ticket"] and not cached.get("missing"):
+        return bool(cached.get("pending"))  # Jira was unreachable last time.
     return milestone(item["turns"]) != milestone(cached.get("turns", 0))
+
+
+def apply_cache(item, titles):
+    """Give a summary the title the sidebar should show right now."""
+    cached = titles.get(item["id"]) or {}
+    if item["ticket"] and cached.get("ticket") == item["ticket"] and cached.get("missing"):
+        item["ticket"] = ""
+        item["category"] = categorize(item["paths"])
+    if item["ticket"]:
+        known = cached.get("ticket") == item["ticket"] and cached.get("title")
+        item["title"] = cached["title"] if known else item["ticket"]
+    elif cached.get("title") and (not cached.get("ticket") or cached.get("missing")):
+        item["title"] = cached["title"]
 
 
 def parse_titles(text):
@@ -328,19 +395,56 @@ def retitle(cwd, cli, session_id=""):
     else:
         found = scan(cwd)
     pending = [item for item in found if needs_title(item, titles)][:TITLE_BATCH]
-    if not pending:
-        return {"updated": 0}
 
-    named = ask_for_titles(cli, pending)
     updated = 0
+    changed = False
+    summaries = {}
+    unnamed = []
     for item in pending:
+        cached = titles.get(item["id"]) or {}
+        key = item["ticket"]
+        if not key or (cached.get("missing") and cached.get("ticket") == key):
+            unnamed.append(item)
+            continue
+        if key not in summaries:
+            summaries[key] = jira_summary(key)
+        summary, missing = summaries[key]
+        if missing:
+            # Not a ticket after all; the model names it like any other.
+            titles[item["id"]] = dict(cached, ticket=key, missing=True)
+            changed = True
+            unnamed.append(item)
+            continue
+        entry = {"turns": item["turns"], "ticket": key}
+        if summary:
+            entry["title"] = (key + " " + summary)[:TITLE_LIMIT]
+        else:
+            entry["title"] = key
+            entry["pending"] = True
+        titles[item["id"]] = entry
+        changed = True
+        updated += 1
+
+    named = ask_for_titles(cli, unnamed) if unnamed else {}
+    for item in unnamed:
         title = named.get(item["id"])
-        if title:
-            titles[item["id"]] = {"title": title, "turns": item["turns"]}
-            updated += 1
-    if updated:
+        if not title:
+            continue
+        entry = {"title": title, "turns": item["turns"]}
+        if item["ticket"]:
+            entry.update(ticket=item["ticket"], missing=True)
+        titles[item["id"]] = entry
+        changed = True
+        updated += 1
+    if changed:
         save_titles(titles)
-    return {"updated": updated}
+
+    result = {"updated": updated}
+    if session_id and found:
+        apply_cache(found[0], titles)
+        result["ticket"] = found[0]["ticket"]
+        result["title"] = found[0]["title"]
+    return result
 
 
 def scan(cwd):
@@ -359,9 +463,8 @@ def list_sessions(cwd):
     titles = load_titles()
     found = scan(cwd)
     for item in found:
-        cached = titles.get(item["id"])
-        if cached and cached.get("title"):
-            item["title"] = cached["title"]
+        apply_cache(item, titles)
+        item.pop("paths")
         # A generated title drops words the person actually typed, so the
         # opening prompt stays available for the search box to match on.
         prompts = item.pop("prompts")

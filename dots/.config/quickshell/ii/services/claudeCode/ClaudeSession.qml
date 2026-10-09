@@ -315,7 +315,15 @@ Scope {
     property string resumeSessionId: ""
     property string spawnResumeId: ""
 
+    // "KEY summary" from Jira once sessions.py has looked the ticket up. Until
+    // then a conversation that ran the jira:ticket skill shows the bare key,
+    // and one that did not shows its first prompt.
+    property string ticketTitle: ""
+
     readonly property string conversationTitle: {
+        if (root.ticketTitle.length > 0) return root.ticketTitle;
+        const key = root.ticketStarted();
+        if (key.length > 0) return key;
         for (const id of root.messageIDs) {
             const message = root.messageByID[id];
             if (message?.role === "user" && message.content.length > 0) {
@@ -323,6 +331,31 @@ Scope {
             }
         }
         return "";
+    }
+
+    // Same rule as sessions.py: only the skill call counts, not a key in the text.
+    function ticketStarted() {
+        for (const id of root.messageIDs) {
+            const message = root.messageByID[id];
+            if (message?.role !== "assistant") continue;
+            for (const call of message.toolCalls ?? []) {
+                if (call.name !== "Skill" || call.input?.skill !== "jira:ticket") continue;
+                const match = /[A-Z][A-Z0-9]+-\d+/.exec(call.input?.args ?? "");
+                if (match) return match[0];
+            }
+        }
+        return "";
+    }
+
+    function claimTicketTitle() {
+        const id = root.sessionId || root.resumeSessionId;
+        if (id.length === 0 || root.ticketTitle.length > 0) return;
+        const listed = root.sessions.find(entry => entry.id === id);
+        if (listed?.ticket) {
+            root.ticketTitle = listed.title;
+            return;
+        }
+        if (root.ticketStarted().length > 0) root.retitle(id);
     }
 
     function refreshSessions() {
@@ -369,6 +402,7 @@ Scope {
                 status: "done"
             }));
         }
+        root.claimTicketTitle();
     }
 
     Process {
@@ -410,13 +444,17 @@ Scope {
         stdout: StdioCollector {
             id: retitleCollector
             onStreamFinished: {
-                let updated = 0;
+                let result = null;
                 try {
-                    updated = JSON.parse(retitleCollector.text)?.updated ?? 0;
+                    result = JSON.parse(retitleCollector.text);
                 } catch (e) {
                     return;
                 }
-                if (updated > 0) root.reloadSessions();
+                const id = root.sessionId || root.resumeSessionId;
+                if (retitleProcess.targetId.length > 0 && retitleProcess.targetId === id) {
+                    root.ticketTitle = result?.ticket ? (result.title ?? "") : "";
+                }
+                if ((result?.updated ?? 0) > 0) root.reloadSessions();
             }
         }
         stderr: SplitParser {
@@ -530,6 +568,7 @@ Scope {
     function clearMessages() {
         root.messageIDs = [];
         root.messageByID = ({});
+        root.ticketTitle = "";
         root.currentAssistantId = "";
         root.thinkingStartedAt = 0;
         root.sessionId = "";
@@ -1439,5 +1478,6 @@ Scope {
         if (last && last.role === "assistant" && stored[stored.length - 1].done === false) {
             last.interrupted = true;
         }
+        root.claimTicketTitle();
     }
 }
