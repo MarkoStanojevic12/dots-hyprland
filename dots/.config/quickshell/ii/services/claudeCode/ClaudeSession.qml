@@ -628,7 +628,8 @@ Scope {
     // `attachments` is [{ path, mediaType, data }] with data already base64,
     // as prepared by ClaudeCode.pasteInto.
     function sendMessage(text, attachments) {
-        const trimmed = text.trim();
+        // Leading blank lines go, but not the first line's own indentation.
+        const trimmed = text.replace(/^\s*\n/, "").replace(/\s+$/, "");
         const images = attachments ?? [];
         if (trimmed.length === 0 && images.length === 0) return;
         if (!root.manager.available) {

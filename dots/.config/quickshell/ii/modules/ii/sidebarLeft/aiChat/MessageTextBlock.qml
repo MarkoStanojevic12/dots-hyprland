@@ -83,6 +83,8 @@ ColumnLayout {
     }
 
     function renderLatex() {
+        // The rendered image is spliced in as markdown, which plain text would show raw.
+        if (!root.renderMarkdown) return;
         // Regex for $...$, $$...$$, \[...\]
         // Note: This is a simple approach and may need refinement for edge cases
         let regex = /(\$\$([\s\S]+?)\$\$)|(\$([^\$]+?)\$)|(\\\[((?:.|\n)+?)\\\])|(\\\(([\s\S]+?)\\\))/g;

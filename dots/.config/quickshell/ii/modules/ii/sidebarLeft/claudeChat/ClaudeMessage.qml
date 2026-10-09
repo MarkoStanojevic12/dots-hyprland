@@ -56,6 +56,9 @@ Item {
     // to 0 and stack at the top, which is where they used to sit anyway.
     readonly property var timeline: {
         const content = root.messageData?.content ?? "";
+        // What the user typed is shown as typed — fences, indentation and
+        // <placeholders> included — so it never goes through the markdown split.
+        if (root.isUser) return content.length > 0 ? [{ type: "text", content: content }] : [];
         const entries = root.messageData?.toolCalls ?? [];
         const items = [];
         let cursor = 0;
@@ -476,8 +479,9 @@ Item {
                         onCurrentMatchAt: y => root.searchCurrentY = textBlock.mapToItem(root, 0, y).y
                         enableMouseSelection: true
                         bodyFontSize: Config.options.sidebar.claude.fontSize * ClaudeCode.textScale
+                        renderMarkdown: !root.isUser
                         // Paths Claude mentions become links to the file itself.
-                        segmentContent: ClaudeCode.linkifyPaths(modelData.content)
+                        segmentContent: root.isUser ? modelData.content : ClaudeCode.linkifyPaths(modelData.content)
                         linkColor: Appearance.colors.colPrimary
                         linkHandler: link => {
                             ClaudeCode.openFileReference(link);
@@ -490,7 +494,8 @@ Item {
                         }
                         messageData: root.messageData
                         done: root.messageData?.done ?? false
-                        forceDisableChunkSplitting: root.messageData?.content.includes("```") ?? true
+                        // Chunking drops blank lines, which verbatim text has to keep.
+                        forceDisableChunkSplitting: root.isUser || (root.messageData?.content.includes("```") ?? true)
                     }
                 }
             }
