@@ -9,7 +9,8 @@ import Quickshell.Io
  * repo, since the prompts are work-specific and this config is public. No file,
  * no features, and the button that opens them stays hidden.
  *
- * [{ title, description, icon, directory, prompt }] — `directory` is optional.
+ * [{ title, description, icon, directory, prompt | command }] — `directory` is
+ * optional. A `command` runs in a terminal window instead of prompting Claude.
  */
 Item {
     id: root

@@ -9,7 +9,7 @@ import QtQuick.Layouts
  */
 RippleButton {
     id: root
-    // { title, description, icon, prompt }
+    // { title, description, icon, prompt | command }
     required property var feature
 
     implicitHeight: featureRow.implicitHeight + 12

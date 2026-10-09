@@ -2,6 +2,7 @@ import qs
 import qs.services
 import qs.modules.common
 import qs.modules.common.widgets
+import qs.modules.common.functions
 import qs.modules.ii.sidebarLeft.claudeChat
 import QtQuick
 import QtQuick.Controls
@@ -222,6 +223,11 @@ Item {
 
     function runFeature(feature) {
         root.usefulFeaturesShown = false;
+        if (feature.command) {
+            Quickshell.execDetached(["bash", "-c",
+                `${Config.options.apps.terminal} -e bash -c '${StringUtils.shellSingleQuoteEscape(feature.command)}'`]);
+            return;
+        }
         ClaudeCode.sendMessage(feature.prompt);
         messageListView.positionViewAtBeginning();
     }
