@@ -38,6 +38,10 @@ Scope {
     // can say there is something here to read.
     property bool unseen: false
 
+    // Where the chat was scrolled to while this tab was on screen: the message
+    // at the top of the view and how far into it, or null when at the newest.
+    property var scrollAnchor: null
+
     readonly property bool active: root.manager.active === root
 
     // ------------------------------------------------------------------

@@ -309,6 +309,65 @@ Item {
         onTriggered: root.revealMessageTop(root.linkJumpIndex)
     }
 
+    // Each tab remembers where its chat was scrolled to. shownTab trails
+    // ClaudeCode.active until the switch is handled, so the view emptying and
+    // refilling on a switch is never recorded against either tab.
+    property var shownTab: null
+    property bool restoringScroll: false
+    Component.onCompleted: root.shownTab = ClaudeCode.active
+
+    function rememberScroll() {
+        const tab = ClaudeCode.active;
+        if (!tab || tab !== root.shownTab || root.restoringScroll) return;
+        const view = messageListView;
+        if (view.atYEnd) {
+            tab.scrollAnchor = null;
+            return;
+        }
+        let item = view.itemAt(view.width / 2, view.contentY + 1);
+        if (!item) item = view.itemAt(view.width / 2, view.contentY + view.spacing + 1);
+        if (item) tab.scrollAnchor = { id: item.modelData, offset: view.contentY - item.y };
+    }
+
+    function restoreScroll() {
+        const view = messageListView;
+        const anchor = ClaudeCode.active?.scrollAnchor ?? null;
+        const index = anchor ? ClaudeCode.messageIDs.indexOf(anchor.id) : -1;
+        if (index < 0) {
+            view.following = true;
+            view.positionViewAtBeginning();
+            return;
+        }
+        view.following = false;
+        const row = root.flipIndex(index);
+        if (!view.itemAtIndex(row)) view.positionViewAtIndex(row, ListView.Contain);
+        const item = view.itemAtIndex(row);
+        if (!item) return;
+        const lowest = view.originY;
+        const highest = lowest + Math.max(0, view.contentHeight - view.height);
+        view.contentY = Math.min(Math.max(item.y + anchor.offset, lowest), highest);
+    }
+
+    Connections {
+        target: ClaudeCode
+        function onActiveChanged() {
+            root.restoringScroll = true;
+            root.shownTab = ClaudeCode.active;
+            Qt.callLater(root.restoreScroll);
+            scrollRestoreSettle.restart();
+        }
+    }
+
+    // A second pass, for the same reason as linkJumpSettle.
+    Timer {
+        id: scrollRestoreSettle
+        interval: 60
+        onTriggered: {
+            root.restoreScroll();
+            root.restoringScroll = false;
+        }
+    }
+
     // Both pickers live in the same strip above the composer, so opening one
     // closes the other rather than stacking two panels over the input.
     function toggleEffortPicker() {
@@ -773,7 +832,7 @@ Item {
                     anchors.fill: parent
                     // The rail beside the chat is its scrollbar.
                     ScrollBar.vertical: null
-                    smoothScroll: !linkRail.dragging
+                    smoothScroll: !linkRail.dragging && !root.restoringScroll
                     // The layer above only masks painting, so without this the
                     // delegates scrolled past the top still swallow clicks meant
                     // for the header buttons.
@@ -801,6 +860,7 @@ Item {
                     onContentYChanged: {
                         following = atYEnd;
                         root.measureLinkView();
+                        root.rememberScroll();
                     }
                     onHeightChanged: root.measureLinkView()
                     Connections {

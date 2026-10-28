@@ -306,7 +306,11 @@ ColumnLayout {
                     // contentHeight: codeTextArea.contentHeight
                     clip: true
                     ScrollBar.vertical.policy: ScrollBar.AlwaysOff
-                    
+                    // A ScrollView accepts every wheel event, even ones it
+                    // can't scroll by, so over a code block the chat stopped
+                    // scrolling. Sideways scrolling is done by the MouseArea below.
+                    wheelEnabled: false
+
                     ScrollBar.horizontal: ScrollBar {
                         anchors.bottom: parent.bottom
                         anchors.left: parent.left
@@ -408,6 +412,23 @@ ColumnLayout {
                             }
                         }
                     }
+                }
+            }
+
+            MouseArea { // Sideways wheel or Shift+wheel scrolls long lines; the rest passes through
+                anchors.fill: parent
+                acceptedButtons: Qt.NoButton
+                onWheel: wheel => {
+                    const flick = codeScrollView.contentItem;
+                    const room = flick.contentWidth - flick.width;
+                    const sideways = Math.abs(wheel.angleDelta.x) > Math.abs(wheel.angleDelta.y);
+                    let delta = !sideways ? 0 : wheel.pixelDelta.x !== 0 ? wheel.pixelDelta.x * 1.5 : wheel.angleDelta.x / 2;
+                    if (delta === 0 && (wheel.modifiers & Qt.ShiftModifier)) delta = wheel.angleDelta.y / 2;
+                    if (delta === 0 || room <= 0) {
+                        wheel.accepted = false;
+                        return;
+                    }
+                    flick.contentX = Math.min(Math.max(flick.contentX - delta, 0), room);
                 }
             }
 
