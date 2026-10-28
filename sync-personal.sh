@@ -13,6 +13,7 @@ DST="dots/.config"
 # Quickshell bar/shell config (temps, network, clipboard, etc.)
 rsync -a --delete \
   --exclude='__pycache__/' --exclude='*.pyc' --exclude='*.new' \
+  --exclude='*.autosave' --exclude='*.bak-*' \
   "$CFG/quickshell/ii/" "$DST/quickshell/ii/"
 
 # Local whisper dictation service behind the Claude sidebar's mic button. The
