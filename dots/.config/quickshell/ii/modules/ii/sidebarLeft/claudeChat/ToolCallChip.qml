@@ -6,7 +6,8 @@ import QtQuick.Layouts
 
 /**
  * One agent tool invocation: a compact row saying what it ran, which expands
- * into the detail worth seeing — a diff for edits, the list for TodoWrite.
+ * into the detail worth seeing — a diff for edits, the list for TodoWrite,
+ * the picture for an image Read.
  */
 Rectangle {
     id: root
@@ -19,11 +20,13 @@ Rectangle {
 
     // An input can still be missing -- oversized ones are dropped from the
     // checkpoint -- and a chip without one has nothing to open.
-    readonly property bool expandable: root.isEdit || root.isWrite || root.isBash
+    readonly property bool expandable: root.isEdit || root.isWrite || root.isBash || root.isImageRead
     readonly property bool isEdit: root.toolName === "Edit" && (root.input?.old_string !== undefined)
     readonly property bool isWrite: root.toolName === "Write" && (root.input?.content !== undefined)
     readonly property bool isTodo: root.toolName === "TodoWrite" && Array.isArray(root.input?.todos)
     readonly property bool isBash: root.toolName === "Bash" && (root.input?.command !== undefined)
+    readonly property bool isImageRead: root.toolName === "Read" && !root.errored
+        && /\.(png|jpe?g|gif|webp|bmp)$/i.test(root.input?.file_path ?? "")
 
     // A move is a rename, not a command worth reading: `mv` prints nothing when
     // it works, so the two paths are the entire result. Only a command that is
@@ -180,6 +183,29 @@ Rectangle {
                 output: root.toolCall?.output ?? ""
                 oldText: root.isEdit ? (root.input?.old_string ?? "") : ""
                 newText: root.isEdit ? (root.input?.new_string ?? "") : (root.input?.content ?? "")
+            }
+        }
+
+        Loader { // The image a Read looked at
+            Layout.fillWidth: true
+            active: root.expanded && root.isImageRead
+            visible: active
+            sourceComponent: Item {
+                implicitHeight: image.status === Image.Ready
+                    ? Math.min(400, width * image.implicitHeight / Math.max(1, image.implicitWidth))
+                    : 0
+
+                // Not StyledImage: it sizes the decode to its own height, which
+                // here is derived from the decoded size.
+                Image {
+                    id: image
+                    anchors.fill: parent
+                    source: Qt.resolvedUrl(root.input?.file_path ?? "")
+                    fillMode: Image.PreserveAspectFit
+                    horizontalAlignment: Image.AlignLeft
+                    asynchronous: true
+                    sourceSize.width: 1024
+                }
             }
         }
     }
