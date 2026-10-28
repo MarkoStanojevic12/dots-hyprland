@@ -34,6 +34,8 @@ Item {
         target: ClaudeCode
         function onInputRequested() {
             if (!root.claudeEnabled) return;
+            // Opening on the lock screen steals keyboard focus from the password field.
+            if (GlobalStates.screenLocked) return;
             // A method call, not an assignment: assigning would break the
             // two-way binding between the tab bar and the pages.
             swipeView.setCurrentIndex(0);
