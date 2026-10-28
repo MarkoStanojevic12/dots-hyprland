@@ -30,5 +30,10 @@ QtObject {
     // so the view offers to pick it up rather than just saying it stopped.
     property bool interrupted: false
 
+    // Code blocks the user edited, keyed by the block as Claude wrote it. Held
+    // here rather than in the block so an edit outlives its delegate being
+    // scrolled away; never saved, so a reload brings back Claude's version.
+    property var codeEdits: ({})
+
     property string model
 }

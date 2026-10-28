@@ -93,6 +93,73 @@ ColumnLayout {
     // Records the terminal so its output can be handed to Claude.
     property bool terminalLogged: false
 
+    // A command the user changed before running it. Null while the block is
+    // still Claude's own, so an edit that empties it isn't mistaken for that.
+    property var editedContent: null
+    readonly property string effectiveContent: root.editedContent ?? root.segmentContent
+    property bool commandEditing: false
+    // What Esc goes back to: the block as it was when this edit began.
+    property var editOriginal: null
+    readonly property var placeholders: root.runnable ? root.findPlaceholders(codeTextArea.text) : []
+
+    onEditedContentChanged: {
+        const edits = root.messageData?.codeEdits;
+        if (!edits) return;
+        if (root.editedContent === null) delete edits[root.segmentContent];
+        else edits[root.segmentContent] = root.editedContent;
+    }
+    Component.onCompleted: root.editedContent = root.messageData?.codeEdits?.[root.segmentContent] ?? null
+
+    // `<path>`-style holes Claude leaves to be filled in. A word has to follow
+    // the `<` directly, which keeps redirections like `< in > out` out of it.
+    function findPlaceholders(text) {
+        const found = [];
+        const pattern = /<[A-Za-z][\w.:\/-]*(?: [\w.:\/-]+)*>/g;
+        let match;
+        while ((match = pattern.exec(text)) !== null) found.push({ start: match.index, end: match.index + match[0].length });
+        return found;
+    }
+
+    function selectPlaceholder(from, backwards) {
+        const marks = root.placeholders;
+        if (marks.length === 0) return false;
+        const target = backwards
+            ? (marks.filter(mark => mark.start < from).pop() ?? marks[marks.length - 1])
+            : (marks.find(mark => mark.start >= from) ?? marks[0]);
+        codeTextArea.select(target.start, target.end);
+        return true;
+    }
+
+    function startEditing(toPlaceholder) {
+        root.editOriginal = root.editedContent;
+        root.commandEditing = true;
+        codeTextArea.forceActiveFocus();
+        if (toPlaceholder) root.selectPlaceholder(0, false);
+        else codeTextArea.cursorPosition = codeTextArea.length;
+    }
+
+    function finishEditing(revert) {
+        if (revert) root.editedContent = root.editOriginal;
+        root.commandEditing = false;
+    }
+
+    function run() {
+        // A run with holes in it can only fail, so the first press goes to
+        // filling them in. Once editing, it runs as is — a false positive must
+        // never make a block unrunnable.
+        if (!root.commandEditing && root.placeholders.length > 0) {
+            root.startEditing(true);
+            return;
+        }
+        root.commandEditing = false;
+        if (root.terminalOpen && inlineTerminal.item) {
+            inlineTerminal.item.command = root.effectiveContent;
+            inlineTerminal.item.restart();
+        } else {
+            root.terminalOpen = true;
+        }
+    }
+
     property real codeBlockBackgroundRounding: Appearance.rounding.small
     property real codeBlockHeaderPadding: 3
     property real codeBlockComponentSpacing: 2
@@ -168,6 +235,28 @@ ColumnLayout {
 
             ButtonGroup {
                 AiMessageControlButton {
+                    visible: root.runnable && root.editedContent !== null
+                    buttonIcon: "undo"
+                    onClicked: {
+                        root.editedContent = null;
+                        root.commandEditing = false;
+                    }
+
+                    StyledToolTip {
+                        text: Translation.tr("Back to Claude's version")
+                    }
+                }
+                AiMessageControlButton {
+                    visible: root.runnable
+                    buttonIcon: "edit"
+                    activated: root.commandEditing
+                    onClicked: root.commandEditing ? root.finishEditing(false) : root.startEditing(root.placeholders.length > 0)
+
+                    StyledToolTip {
+                        text: root.commandEditing ? Translation.tr("Done editing") : Translation.tr("Edit command")
+                    }
+                }
+                AiMessageControlButton {
                     id: runCodeButton
                     visible: root.runnable
                     buttonIcon: "play_arrow"
@@ -176,13 +265,12 @@ ColumnLayout {
                     // The sidebar keeps the keyboard grab while this runs — that
                     // is what makes the terminal typeable without any of the
                     // focus handover the old spawn-a-window path needed.
-                    onClicked: {
-                        if (root.terminalOpen && inlineTerminal.item) inlineTerminal.item.restart();
-                        else root.terminalOpen = true;
-                    }
+                    onClicked: root.run()
 
                     StyledToolTip {
-                        text: root.terminalOpen ? Translation.tr("Run again") : Translation.tr("Run here")
+                        text: !root.commandEditing && root.placeholders.length > 0 ? Translation.tr("Fill in the placeholders")
+                            : root.terminalOpen ? Translation.tr("Run again")
+                            : Translation.tr("Run here")
                     }
                 }
                 AiMessageControlButton {
@@ -190,7 +278,7 @@ ColumnLayout {
                     buttonIcon: activated ? "inventory" : "content_copy"
 
                     onClicked: {
-                        Quickshell.clipboardText = segmentContent
+                        Quickshell.clipboardText = root.effectiveContent
                         copyCodeButton.activated = true
                         copyIconTimer.restart()
                     }
@@ -214,7 +302,7 @@ ColumnLayout {
                     onClicked: {
                         const downloadPath = FileUtils.trimFileProtocol(Directories.downloads)
                         Quickshell.execDetached(["bash", "-c", 
-                            `echo '${StringUtils.shellSingleQuoteEscape(segmentContent)}' > '${downloadPath}/code.${segmentLang || "txt"}'`
+                            `echo '${StringUtils.shellSingleQuoteEscape(root.effectiveContent)}' >'${downloadPath}/code.${segmentLang || "txt"}'`
                         ])
                         Quickshell.execDetached(["notify-send", 
                             Translation.tr("Code saved to file"), 
@@ -290,6 +378,8 @@ ColumnLayout {
             topRightRadius: Appearance.rounding.unsharpen
             bottomRightRadius: codeBlockBackgroundRounding
             color: Appearance.colors.colLayer2
+            border.width: root.commandEditing ? 1 : 0
+            border.color: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.4)
             implicitHeight: codeColumnLayout.implicitHeight
 
             ColumnLayout {
@@ -338,8 +428,8 @@ ColumnLayout {
                     TextArea { // Code
                         id: codeTextArea
                         Layout.fillWidth: true
-                        readOnly: !editing
-                        selectByMouse: enableMouseSelection || editing
+                        readOnly: !(editing || root.commandEditing)
+                        selectByMouse: enableMouseSelection || editing || root.commandEditing
                         renderType: Text.NativeRendering
                         font.family: Appearance.font.family.monospace
                         font.hintingPreference: Font.PreferNoHinting // Prevent weird bold text
@@ -349,13 +439,28 @@ ColumnLayout {
                         // wrapMode: TextEdit.Wrap
                         color: messageData.thinking ? Appearance.colors.colSubtext : Appearance.colors.colOnLayer1
 
-                        text: segmentContent
+                        text: root.effectiveContent
                         onTextChanged: {
-                            segmentContent = text
+                            if (root.commandEditing) root.editedContent = text === root.segmentContent ? null : text
+                            else if (editing) segmentContent = text
                         }
 
                         Keys.onPressed: (event) => {
-                            if (event.key === Qt.Key_Tab) {
+                            const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
+                            if (root.commandEditing && !ctrl && (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab)) {
+                                const backwards = event.key === Qt.Key_Backtab || (event.modifiers & Qt.ShiftModifier);
+                                if (root.selectPlaceholder(backwards ? codeTextArea.selectionStart : codeTextArea.selectionEnd, backwards)) {
+                                    event.accepted = true;
+                                    return;
+                                }
+                            }
+                            if (root.commandEditing && ctrl && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter)) {
+                                root.run();
+                                event.accepted = true;
+                            } else if (root.commandEditing && event.key === Qt.Key_Escape) {
+                                root.finishEditing(true);
+                                event.accepted = true;
+                            } else if (event.key === Qt.Key_Tab && !ctrl) {
                                 // Insert 4 spaces at cursor
                                 const cursor = codeTextArea.cursorPosition;
                                 codeTextArea.insert(cursor, "    ");
@@ -382,6 +487,55 @@ ColumnLayout {
                             current: root.searchCurrent
                             onCurrentMatchAt: y => root.currentMatchAt(codeTextArea.mapToItem(root, 0, y).y)
                         }
+
+                        Repeater { // The placeholders still to fill in
+                            model: root.placeholders
+
+                            Rectangle {
+                                id: placeholderMark
+                                required property var modelData
+                                readonly property real layoutVersion: codeTextArea.contentWidth + codeTextArea.contentHeight
+                                readonly property rect startRect: {
+                                    const version = placeholderMark.layoutVersion;
+                                    return codeTextArea.positionToRectangle(placeholderMark.modelData.start);
+                                }
+                                readonly property rect endRect: {
+                                    const version = placeholderMark.layoutVersion;
+                                    return codeTextArea.positionToRectangle(placeholderMark.modelData.end);
+                                }
+                                x: placeholderMark.startRect.x - 1
+                                y: placeholderMark.startRect.y
+                                width: placeholderMark.endRect.x - placeholderMark.startRect.x + 2
+                                height: placeholderMark.startRect.height
+                                radius: 3
+                                color: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.82)
+                                border.width: 1
+                                border.color: ColorUtils.transparentize(Appearance.colors.colPrimary, 0.4)
+                            }
+                        }
+                    }
+                }
+                RowLayout { // How to get around while the command is being edited
+                    visible: root.commandEditing
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
+                    Layout.bottomMargin: 6
+                    spacing: 6
+
+                    MaterialSymbol {
+                        text: "edit"
+                        iconSize: Appearance.font.pixelSize.small
+                        color: Appearance.colors.colPrimary
+                    }
+                    StyledText {
+                        Layout.fillWidth: true
+                        wrapMode: Text.Wrap
+                        font.pixelSize: Appearance.font.pixelSize.smaller
+                        color: Appearance.colors.colSubtext
+                        text: root.placeholders.length > 0
+                            ? Translation.tr("Tab next placeholder · Ctrl+Enter run · Esc cancel")
+                            : Translation.tr("Ctrl+Enter run · Esc cancel")
                     }
                 }
                 Loader {
@@ -469,7 +623,7 @@ ColumnLayout {
             inlineTerminal.item.workingDirectory = root.workingDirectory;
             inlineTerminal.item.logged = root.terminalLogged;
             inlineTerminal.item.closeRequested.connect(() => root.terminalOpen = false);
-            inlineTerminal.item.command = root.segmentContent;
+            inlineTerminal.item.command = root.effectiveContent;
         }
         // Deferred: closing from inside the loader's own status change writes
         // straight back into the property `active` reads, which Qt reports as
