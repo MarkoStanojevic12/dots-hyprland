@@ -146,6 +146,7 @@ Item {
     }
 
     function openChatSearch() {
+        root.historyShown = false;
         root.chatSearchShown = true;
         chatSearchField.forceActiveFocus();
         chatSearchField.selectAll();
@@ -391,22 +392,19 @@ Item {
     // History and the feature list both drop out of the header, so opening one
     // closes the other rather than stacking two panels over the messages.
     function toggleHistory() {
-        root.historyShown = !root.historyShown;
         if (root.historyShown) {
-            root.usefulFeaturesShown = false;
-            historySearch.clear();
-            historySearch.forceActiveFocus();
-            ClaudeCode.refreshSessions();
+            root.closeHistory();
+            return;
         }
+        root.historyShown = true;
+        root.usefulFeaturesShown = false;
+        historyPage.open();
+        ClaudeCode.refreshSessions();
     }
 
-    // Matched against the generated title, the opening prompt and the category,
-    // so both "what it was about" and "what I typed" find a conversation.
-    readonly property var matchingSessions: {
-        const needle = historySearch.text.trim().toLowerCase();
-        if (needle.length === 0) return ClaudeCode.sessions;
-        return ClaudeCode.sessions.filter(session =>
-            `${session.title} ${session.prompt} ${session.category}`.toLowerCase().includes(needle));
+    function closeHistory() {
+        root.historyShown = false;
+        messageInputField.forceActiveFocus();
     }
 
     function toggleUsefulFeatures() {
@@ -464,7 +462,9 @@ Item {
     }
 
     onFocusChanged: focus => {
-        if (focus) root.inputField.forceActiveFocus();
+        if (!focus) return;
+        if (root.historyShown) historyPage.searchField.forceActiveFocus();
+        else root.inputField.forceActiveFocus();
     }
 
     Keys.onPressed: event => {
@@ -506,7 +506,8 @@ Item {
         // cursor out of that question's own field.
         const character = event.text;
         if (character.length === 0 || character.charCodeAt(0) < 0x20 || character.charCodeAt(0) === 0x7f) return;
-        messageInputField.forceActiveFocus();
+        if (root.historyShown) historyPage.searchField.forceActiveFocus();
+        else messageInputField.forceActiveFocus();
     }
 
     function send() {
@@ -587,118 +588,19 @@ Item {
             }
         }
 
-        Revealer { // History list
-            vertical: true
-            reveal: root.historyShown
-            // Only while open -- the Revealer collapses to nothing when closed,
-            // so an unconditional margin would leave a gap under the header.
-            Layout.bottomMargin: root.historyShown ? 10 : 0
-
-            Behavior on Layout.bottomMargin {
-                animation: Appearance.animation.elementMove.numberAnimation.createObject(this)
-            }
-
-            Rectangle {
-                width: mainColumn.width
-                implicitHeight: Math.min(
-                    historySearch.implicitHeight
-                        + Math.max(historyList.contentHeight, emptyHistoryLabel.implicitHeight) + 12,
-                    root.height * 0.5)
-                radius: Appearance.rounding.small
-                color: Appearance.colors.colLayer2
-
-                ColumnLayout {
-                    anchors {
-                        fill: parent
-                        margins: 4
-                    }
-                    spacing: 4
-
-                    MaterialTextField {
-                        id: historySearch
-                        Layout.fillWidth: true
-                        font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
-                        placeholderText: Translation.tr("Search conversations…")
-                        Keys.onPressed: event => {
-                            if (event.key !== Qt.Key_Escape) return;
-                            // Escape backs out of the search before it backs out
-                            // of the panel, so a typo does not cost the list.
-                            if (historySearch.text.length > 0) historySearch.clear();
-                            else root.historyShown = false;
-                            event.accepted = true;
-                        }
-                    }
-
-                    Item {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-
-                        StyledListView {
-                            id: historyList
-                            anchors.fill: parent
-                            clip: true
-                            spacing: 2
-                            model: ScriptModel {
-                                values: root.matchingSessions
-                            }
-                            delegate: Column {
-                                id: historyEntry
-                                required property var modelData
-                                required property int index
-                                // The list arrives grouped by category, so a heading
-                                // is just the point where the category changes.
-                                readonly property bool opensCategory: historyEntry.index === 0
-                                    || root.matchingSessions[historyEntry.index - 1]?.category !== historyEntry.modelData?.category
-
-                                width: historyList.width
-                                spacing: 2
-
-                                StyledText {
-                                    visible: historyEntry.opensCategory
-                                    leftPadding: 8
-                                    topPadding: historyEntry.index === 0 ? 2 : 8
-                                    bottomPadding: 2
-                                    font.pixelSize: Appearance.font.pixelSize.smallest * ClaudeCode.textScale
-                                    font.weight: Font.DemiBold
-                                    color: Appearance.colors.colSubtext
-                                    text: historyEntry.modelData?.category ?? ""
-                                }
-
-                                SessionListItem {
-                                    width: parent.width
-                                    session: historyEntry.modelData
-                                    current: ClaudeCode.resumeSessionId === historyEntry.modelData.id
-                                    onClicked: {
-                                        ClaudeCode.loadSession(historyEntry.modelData.id);
-                                        root.historyShown = false;
-                                    }
-                                }
-                            }
-                        }
-
-                        StyledText {
-                            id: emptyHistoryLabel
-                            anchors.centerIn: parent
-                            width: parent.width - 16
-                            horizontalAlignment: Text.AlignHCenter
-                            wrapMode: Text.Wrap
-                            visible: root.matchingSessions.length === 0
-                            font.pixelSize: Appearance.font.pixelSize.smaller * ClaudeCode.textScale
-                            color: Appearance.colors.colSubtext
-                            text: {
-                                if (ClaudeCode.sessionsLoading) return Translation.tr("Looking for past conversations…");
-                                if (historySearch.text.trim().length > 0) return Translation.tr("Nothing matches that search");
-                                return Translation.tr("No past conversations here yet");
-                            }
-                        }
-                    }
-                }
-            }
+        // Everything below the tab strip makes way for it while it is open.
+        HistoryPage {
+            id: historyPage
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.topMargin: 4
+            visible: root.historyShown
+            onCloseRequested: root.closeHistory()
         }
 
         Revealer { // Find in chat
             vertical: true
-            reveal: root.chatSearchShown
+            reveal: root.chatSearchShown && !root.historyShown
 
             Rectangle {
                 width: mainColumn.width
@@ -795,6 +697,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.topMargin: 8
+            visible: !root.historyShown
 
             Item { // Messages
                 id: messagesArea
@@ -952,14 +855,14 @@ Item {
         Loader { // Signed out — nothing else in the tab will work until it isn't
             Layout.fillWidth: true
             active: ClaudeCode.signedOut
-            visible: active
+            visible: active && !root.historyShown
             sourceComponent: SignInCard {}
         }
 
         Loader { // Claude asking something, answered by clicking
             Layout.fillWidth: true
             active: ClaudeCode.pendingQuestion !== null
-            visible: active
+            visible: active && !root.historyShown
             sourceComponent: QuestionCard {
                 request: ClaudeCode.pendingQuestion
             }
@@ -968,7 +871,7 @@ Item {
         Loader { // Permission request, right above the input where the answer goes
             Layout.fillWidth: true
             active: ClaudeCode.pendingPermission !== null
-            visible: active
+            visible: active && !root.historyShown
             sourceComponent: PermissionRequestCard {
                 request: ClaudeCode.pendingPermission
             }
@@ -977,6 +880,7 @@ Item {
         Rectangle { // Input area
             id: inputWrapper
             Layout.fillWidth: true
+            visible: !root.historyShown
             radius: Appearance.rounding.normal - root.padding
             color: Appearance.colors.colLayer2
             implicitHeight: inputColumn.implicitHeight + 5 * 2

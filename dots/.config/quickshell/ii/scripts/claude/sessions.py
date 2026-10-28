@@ -24,7 +24,11 @@ PROJECTS = os.path.join(HOME, ".claude", "projects")
 MAX_SESSIONS = 60
 TITLE_LIMIT = 90
 
-CATEGORIES = ("Tickets", "Coding", "Hyprland", "Misc")
+CATEGORIES = ("Tickets", "PR Reviews", "Coding", "Hyprland", "Misc")
+
+# A conversation that wrote a review here is listed under PR Reviews; reading
+# one, or running /code-review on your own diff, does not count.
+REVIEWS_DIR = os.path.join(HOME, "reviews") + "/"
 
 # A path under any of these means the conversation was desktop-config work.
 DESKTOP_MARKERS = (
@@ -219,6 +223,21 @@ def ticket_started(message):
     return ""
 
 
+def wrote_review(message):
+    for block in blocks_of(message):
+        if block.get("type") != "tool_use" or block.get("name") not in ("Write", "Edit"):
+            continue
+        path = str((block.get("input") or {}).get("file_path") or "")
+        if path.startswith(REVIEWS_DIR) and path.endswith(".md"):
+            return True
+    return False
+
+
+def fallback_category(item):
+    """The category of a conversation that is not ticket work."""
+    return "PR Reviews" if item["reviewed"] else categorize(item["paths"])
+
+
 def jira_summary(key):
     """(summary or None, missing). Missing means Jira says no such issue."""
     try:
@@ -249,6 +268,7 @@ def summarize(path, cwd):
     confirmed = False
     paths = set()
     ticket = ""
+    reviewed = False
 
     for entry in entries(path):
         entry_cwd = entry.get("cwd")
@@ -266,19 +286,22 @@ def summarize(path, cwd):
             message = entry.get("message") or {}
             paths.update(tool_paths(message))
             ticket = ticket or ticket_started(message)
+            reviewed = reviewed or wrote_review(message)
 
     if not confirmed or turns == 0:
         return None
-    return {
+    item = {
         "id": session or os.path.basename(path)[: -len(".jsonl")],
         "title": prompts[0][:TITLE_LIMIT] if prompts else "(no prompt)",
         "ticket": ticket,
         "mtime": int(os.path.getmtime(path)),
         "turns": turns,
-        "category": "Tickets" if ticket else categorize(paths),
         "prompts": prompts,
         "paths": sorted(paths),
+        "reviewed": reviewed,
     }
+    item["category"] = "Tickets" if ticket else fallback_category(item)
+    return item
 
 
 def load_titles():
@@ -323,7 +346,7 @@ def apply_cache(item, titles):
     cached = titles.get(item["id"]) or {}
     if item["ticket"] and cached.get("ticket") == item["ticket"] and cached.get("missing"):
         item["ticket"] = ""
-        item["category"] = categorize(item["paths"])
+        item["category"] = fallback_category(item)
     if item["ticket"]:
         known = cached.get("ticket") == item["ticket"] and cached.get("title")
         item["title"] = cached["title"] if known else item["ticket"]
@@ -465,6 +488,7 @@ def list_sessions(cwd):
     for item in found:
         apply_cache(item, titles)
         item.pop("paths")
+        item.pop("reviewed")
         # A generated title drops words the person actually typed, so the
         # opening prompt stays available for the search box to match on.
         prompts = item.pop("prompts")
