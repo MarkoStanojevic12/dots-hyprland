@@ -913,7 +913,9 @@ Item {
                     right: parent.right
                 }
                 width: 26
-                visible: root.linkRailShown
+                // Its width stays reserved while hidden, so the chat crossing
+                // the fit threshold doesn't reflow the messages back and forth.
+                visible: root.linkRailShown && linkRail.scrollable
                 markers: root.linkRailMarkers
                 viewTop: root.linkViewTop
                 viewHeight: root.linkViewHeight

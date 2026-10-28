@@ -13,9 +13,9 @@ import "linkIcons.js" as LinkIcons
  * short name it is drawn with, and for tickets, PRs, issues and crashes the
  * live state their cards show.
  *
- * Work sites and repo nicknames come from link-rules.json in the shell config
- * dir, which the public dotfiles never carry; without it every link still gets
- * its brand icon and a generic name.
+ * Work sites, repo nicknames and Jira project keys come from link-rules.json in
+ * the shell config dir, which the public dotfiles never carry; without it every
+ * link still gets its brand icon and a generic name.
  */
 Singleton {
     id: root
@@ -152,6 +152,13 @@ Singleton {
 
     property var localRules: ({})
     readonly property var repoShortNames: root.localRules.repoShortNames ?? {}
+    // { "ABC": "https://example.atlassian.net" }: a bare ABC-123 in a reply links
+    // to that site. Only listed keys count, so UTF-8 or SHA-256 never do.
+    readonly property var jiraProjects: root.localRules.jiraProjects ?? {}
+    readonly property var ticketKeyTest: {
+        const keys = Object.keys(root.jiraProjects).filter(key => /^[A-Z][A-Z0-9]+$/.test(key));
+        return keys.length > 0 ? new RegExp(`(?:^|[^\\w/.-])(?:${keys.join("|")})-\\d`) : null;
+    }
 
     readonly property var rules: {
         const out = [];
@@ -381,24 +388,63 @@ Singleton {
 
     // Walks the http(s) links in markdown outside code. Code spans, images and
     // raw HTML tags are matched only so that nothing inside them is touched.
+    function ticketUrl(key) {
+        const site = root.jiraProjects[key.slice(0, key.lastIndexOf("-"))];
+        if (typeof site !== "string" || !/^https?:\/\/[^\s\/]+\/?$/i.test(site)) return null;
+        return `${site.replace(/\/+$/, "")}/browse/${key}`;
+    }
+
+    function hasLinks(text) {
+        return /https?:\/\//i.test(text) || (root.ticketKeyTest?.test(text) ?? false);
+    }
+
+    // Calls visit(match, url, label, trailing, isKey) for every link outside code
+    // spans, bare ticket keys of listed projects included, and puts back what it
+    // returns. A key must stand alone, so a branch like CS-12-fix is no key.
+    // The character before a key can't be one that opens a code span, link or
+    // tag: Qt's regex engine then sometimes picks the key over the code span
+    // around it, and it has no lookbehind to say this another way.
     function eachLink(markdown, visit) {
-        return markdown.replace(/(`+)[^\n]*?\1|!\[[^\]\n]*\]\([^)\n]*\)|\[((?:[^\[\]\n]|\[[^\]\n]*\])*)\]\(([^)\s]+)\)|<(https?:\/\/[^>\s]+)>|<\/?[A-Za-z][^>\n]*>|(https?:\/\/[^\s<>()\[\]|`]+(?:\([^\s<>()|`]*\)[^\s<>()\[\]|`]*)*)/gi,
-            (match, ticks, label, href, auto, bare) => {
-                if (href !== undefined) return /^https?:\/\//i.test(href) ? visit(match, href, label, "") : match;
-                if (auto !== undefined) return visit(match, auto, null, "");
+        return markdown.replace(/(`+)[^\n]*?\1|!\[[^\]\n]*\]\([^)\n]*\)|\[((?:[^\[\]\n]|\[[^\]\n]*\])*)\]\(([^)\s]+)\)|<(https?:\/\/[^>\s]+)>|<\/?[A-Za-z][^>\n]*>|(https?:\/\/[^\s<>()\[\]|`]+(?:\([^\s<>()|`]*\)[^\s<>()\[\]|`]*)*)|(^|[^\w\/.\-`\[<!])([A-Z][A-Z0-9]+-\d+)(?![\w\/-]|\.\w)/gi,
+            (match, ticks, label, href, auto, bare, before, key) => {
+                if (href !== undefined) return /^https?:\/\//i.test(href) ? visit(match, href, label, "", false) : match;
+                if (auto !== undefined) return visit(match, auto, null, "", false);
                 if (bare !== undefined) {
                     const url = bare.replace(/[.,;:!?*'"]+$/, "");
-                    return visit(match, url, null, bare.slice(url.length));
+                    return visit(match, url, null, bare.slice(url.length), false);
+                }
+                if (key !== undefined) {
+                    const url = root.ticketUrl(key);
+                    return url ? before + visit(key, url, null, "", true) : match;
                 }
                 return match;
             });
+    }
+
+    // Whether what was said after a card's link only repeats the card's title,
+    // as in "CS-12 (bug): <the ticket's title>". Most of the title has to be in
+    // it and little else, so a real note after the title still counts.
+    function remarkEchoes(remark, title) {
+        const words = text => String(text ?? "").toLowerCase().match(/[a-z0-9À-ɏ]+/g) ?? [];
+        const titleWords = new Set(words(title));
+        const remarkWords = words(remark);
+        if (titleWords.size === 0 || remarkWords.length === 0) return false;
+        const said = new Set(remarkWords);
+        const covered = [...titleWords].filter(word => said.has(word)).length / titleWords.size;
+        const extra = remarkWords.filter(word => !titleWords.has(word)).length / remarkWords.length;
+        return covered >= 0.6 && extra <= 0.3;
+    }
+
+    // Bare ticket keys as markdown links, so the line parsing below sees links.
+    function linkTicketKeys(markdown) {
+        return root.eachLink(markdown, (match, url, label, trailing, isKey) => isKey ? `[${match}](${url})` : match);
     }
 
     // Every link gets its site's icon; a bare URL also gets the short name in
     // place of the raw address. The icon sits in front of the link, never in
     // its label, because inline HTML in a label stops Qt parsing the link.
     function decorate(markdown, px) {
-        if (!markdown || !/https?:\/\//i.test(markdown)) return markdown ?? "";
+        if (!markdown || !root.hasLinks(markdown)) return markdown ?? "";
         return root.eachLink(markdown, (match, url, label, trailing) => {
             const icon = root.iconTag(url, px);
             if (label !== null) return icon + match;
@@ -486,7 +532,7 @@ Singleton {
             } else if (/^\s/.test(line) || !(blank(i - 1) || heading(i - 1)) || !(blank(i + 1) || heading(i + 1))) {
                 return null;
             }
-            const link = root.linkOnly(item ? item[1] : line);
+            const link = root.linkOnly(root.linkTicketKeys(item ? item[1] : line));
             const info = link ? root.classify(link.url) : null;
             if (!info) return null;
             link.info = info;
@@ -554,7 +600,7 @@ Singleton {
         const blocks = StringUtils.splitMarkdownBlocks(text);
         const out = [];
         blocks.forEach((block, i) => {
-            if (block.type !== "text" || !/https?:\/\//i.test(block.content)) {
+            if (block.type !== "text" || !root.hasLinks(block.content)) {
                 out.push(block);
                 return;
             }

@@ -7,7 +7,8 @@ import QtQuick.Layouts
 
 /**
  * Consecutive ticket, PR, issue and crash lines of a reply, each as a card
- * with whatever was said after the link underneath it.
+ * with whatever was said after the link underneath it, unless that only
+ * repeats the card's title.
  */
 ColumnLayout {
     id: root
@@ -25,6 +26,7 @@ ColumnLayout {
             spacing: 3
 
             LinkCard {
+                id: card
                 Layout.fillWidth: true
                 link: entry.modelData
             }
@@ -32,7 +34,7 @@ ColumnLayout {
                 Layout.fillWidth: true
                 Layout.leftMargin: 4
                 Layout.rightMargin: 4
-                visible: entry.modelData.rest.length > 0
+                visible: entry.modelData.rest.length > 0 && !ChatLinks.remarkEchoes(entry.modelData.rest, card.title)
                 wrapMode: Text.Wrap
                 textFormat: Text.MarkdownText
                 font.family: Appearance.font.family.reading
