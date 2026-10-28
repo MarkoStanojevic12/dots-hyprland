@@ -112,6 +112,12 @@ summary)
     fetch body GET "issue/$1?fields=summary"
     jq -c '{key, summary: .fields.summary}' <<<"$body"
     ;;
+brief)
+    need_key "${1:-}"
+    fetch body GET "issue/$1?fields=summary,status,issuetype"
+    jq -c --arg site "$site" '{key, site: $site, summary: .fields.summary, status: .fields.status.name,
+        statusCategory: .fields.status.statusCategory.key, type: .fields.issuetype.name}' <<<"$body"
+    ;;
 transitions)
     need_key "${1:-}"
     fetch body GET "issue/$1/transitions"
@@ -229,6 +235,6 @@ notify)
     esac
     ;;
 *)
-    fail "usage: jira.sh issue|transitions|transition|comment|assign|users|mentionable|branch|events|notify ..." 2
+    fail "usage: jira.sh issue|summary|brief|transitions|transition|comment|assign|users|mentionable|branch|events|notify ..." 2
     ;;
 esac

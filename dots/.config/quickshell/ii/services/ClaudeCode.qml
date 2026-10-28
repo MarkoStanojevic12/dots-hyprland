@@ -567,8 +567,22 @@ Singleton {
 
     function messageMatchTotal(message, query) {
         let total = 0;
-        for (const block of StringUtils.splitMarkdownBlocks(message?.content ?? "")) {
-            total += root.countMatches(block.content, query);
+        const content = message?.content ?? "";
+        if (message?.role === "user") {
+            for (const block of StringUtils.splitMarkdownBlocks(content)) total += root.countMatches(block.content, query);
+        } else {
+            // Sliced at the tool calls exactly as ClaudeMessage's timeline is, so
+            // link lines drawn as cards (which have no matches) agree on both sides.
+            const count = (text, streaming) => {
+                for (const block of ChatLinks.proseBlocks(text, streaming)) total += root.countMatches(block.content, query);
+            };
+            let cursor = 0;
+            for (const call of message?.toolCalls ?? []) {
+                const at = Math.max(cursor, Math.min(call.contentOffset ?? 0, content.length));
+                count(content.slice(cursor, at), false);
+                cursor = at;
+            }
+            count(content.slice(cursor), !(message?.done ?? true));
         }
         for (const call of message?.toolCalls ?? []) {
             if (root.isSearchableTool(call)) total += root.countMatches(root.toolSearchText(call), query);

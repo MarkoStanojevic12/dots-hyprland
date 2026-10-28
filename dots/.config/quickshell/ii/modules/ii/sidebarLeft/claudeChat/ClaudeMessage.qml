@@ -63,16 +63,18 @@ Item {
         const items = [];
         let cursor = 0;
 
-        const pushProse = (text) => {
+        // Lines that are only a ticket, PR or crash link become cards, and lists
+        // of plain links a sources box (ChatLinks.proseBlocks).
+        const pushProse = (text, streaming) => {
             if (text.length === 0) return;
-            for (const block of StringUtils.splitMarkdownBlocks(text)) items.push(block);
+            for (const block of ChatLinks.proseBlocks(text, streaming)) items.push(block);
         };
 
         for (const entry of entries) {
             // Offsets only ever move forward: a stale one from a mid-turn
             // rewrite must not drag a later chip above an earlier one.
             const at = Math.max(cursor, Math.min(entry.contentOffset ?? 0, content.length));
-            pushProse(content.slice(cursor, at));
+            pushProse(content.slice(cursor, at), false);
             cursor = at;
             items.push({
                 type: entry.name === "__thought" ? "thought"
@@ -81,7 +83,7 @@ Item {
                 call: entry
             });
         }
-        pushProse(content.slice(cursor));
+        pushProse(content.slice(cursor), !(root.messageData?.done ?? true));
 
         // Steps that sit next to each other get their rails joined up; prose in
         // between breaks the thread, which is the honest picture of what ran.
@@ -455,6 +457,27 @@ Item {
                     }
                 }
                 DelegateChoice {
+                    roleValue: "links"
+                    LinkCardsBlock {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        Layout.leftMargin: root.contentInset
+                        Layout.rightMargin: 4
+                        cards: modelData.cards
+                        bodyFontSize: Config.options.sidebar.claude.fontSize * ClaudeCode.textScale
+                    }
+                }
+                DelegateChoice {
+                    roleValue: "sources"
+                    LinkSourcesBlock {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        Layout.leftMargin: root.contentInset
+                        Layout.rightMargin: 4
+                        rows: modelData.cards
+                    }
+                }
+                DelegateChoice {
                     roleValue: "think"
                     MessageThinkBlock {
                         enableMouseSelection: true
@@ -481,7 +504,8 @@ Item {
                         bodyFontSize: Config.options.sidebar.claude.fontSize * ClaudeCode.textScale
                         renderMarkdown: !root.isUser
                         // Paths Claude mentions become links to the file itself.
-                        segmentContent: root.isUser ? modelData.content : ClaudeCode.linkifyPaths(modelData.content)
+                        segmentContent: root.isUser ? modelData.content
+                            : ChatLinks.decorate(ClaudeCode.linkifyPaths(modelData.content), Math.round(textBlock.bodyFontSize * 0.95))
                         linkColor: Appearance.colors.colPrimary
                         linkHandler: link => {
                             ClaudeCode.openFileReference(link);

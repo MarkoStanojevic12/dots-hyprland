@@ -17,6 +17,8 @@ ListView {
     property bool animateMovement: false
     // Accumulated scroll destination so wheel deltas stack while animating
     property real scrollTargetY: 0
+    // Off while something drags the view that has to keep up with the pointer
+    property bool smoothScroll: true
 
     property real touchpadScrollFactor: Config?.options.interactions.scrolling.touchpadScrollFactor ?? 100
     property real mouseScrollFactor: Config?.options.interactions.scrolling.mouseScrollFactor ?? 50
@@ -52,6 +54,7 @@ ListView {
     }
 
     Behavior on contentY {
+        enabled: root.smoothScroll
         NumberAnimation {
             id: scrollAnim
             alwaysRunToEnd: true

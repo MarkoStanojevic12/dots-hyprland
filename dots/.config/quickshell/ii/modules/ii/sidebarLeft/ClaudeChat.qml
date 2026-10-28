@@ -188,6 +188,127 @@ Item {
         onTriggered: root.chatSearchReveal()
     }
 
+    // The rail beside the chat is its scrollbar, with one marker per reply that
+    // posted links.
+    readonly property var linkTurns: {
+        const turns = [];
+        ClaudeCode.messageIDs.forEach((id, messageIndex) => {
+            const message = ClaudeCode.messageByID[id];
+            if (!message || message.role !== "assistant") return;
+            const links = ChatLinks.linksIn(id, message.content);
+            if (links.length > 0) turns.push({ messageIndex: messageIndex, links: links });
+        });
+        return turns;
+    }
+    readonly property bool linkRailShown: !root.historyShown
+    onLinkRailShownChanged: if (root.linkRailShown) messageGeometry.restart()
+
+    // The list only builds the messages near the screen, so the rail works from
+    // the heights each message last reported; one never built yet counts as the
+    // average, which only nudges the markers until it has been seen.
+    readonly property var messageHeights: ({})
+    property var messageTops: []
+    property real messagesTotal: 1
+    property real linkViewTop: 0
+    property real linkViewHeight: 1
+    readonly property var linkRailMarkers: root.linkTurns.map(turn => ({
+        messageIndex: turn.messageIndex,
+        links: turn.links,
+        fraction: (root.messageTops[turn.messageIndex] ?? 0) / root.messagesTotal
+    }))
+
+    function noteMessageHeight(id, height) {
+        if (root.messageHeights[id] === height) return;
+        root.messageHeights[id] = height;
+        if (root.linkRailShown) messageGeometry.restart();
+    }
+
+    Timer {
+        id: messageGeometry
+        interval: 100
+        onTriggered: root.measureMessages()
+    }
+    Connections {
+        target: ClaudeCode
+        function onMessageIDsChanged() {
+            if (root.linkRailShown) messageGeometry.restart();
+        }
+    }
+
+    function measureMessages() {
+        const ids = ClaudeCode.messageIDs;
+        const known = ids.map(id => root.messageHeights[id]).filter(height => height > 0);
+        const guess = known.length > 0 ? known.reduce((sum, height) => sum + height, 0) / known.length : 120;
+        const tops = [];
+        let y = 0;
+        for (const id of ids) {
+            tops.push(y);
+            y += (root.messageHeights[id] > 0 ? root.messageHeights[id] : guess) + messageListView.spacing;
+        }
+        root.messageTops = tops;
+        root.messagesTotal = Math.max(1, y - messageListView.spacing);
+        root.measureLinkView();
+    }
+
+    function measureLinkView() {
+        if (!root.linkRailShown) return;
+        const view = messageListView;
+        let item = view.itemAt(view.width / 2, view.contentY + 1);
+        if (!item) item = view.itemAt(view.width / 2, view.contentY + view.spacing + 1);
+        if (!item || root.messageTops[item.messageIndex] === undefined) return;
+        root.linkViewTop = (root.messageTops[item.messageIndex] + view.contentY - item.y) / root.messagesTotal;
+        root.linkViewHeight = view.height / root.messagesTotal;
+    }
+
+    function linkRailJump(messageIndex) {
+        messageListView.following = false;
+        root.linkJumpIndex = messageIndex;
+        if (!root.revealMessageTop(messageIndex)) messageListView.positionViewAtIndex(root.flipIndex(messageIndex), ListView.Contain);
+        linkJumpSettle.restart();
+    }
+
+    function linkRailScrollTo(top) {
+        if (root.messageTops.length === 0) return;
+        const view = messageListView;
+        const target = top * root.messagesTotal;
+        let index = 0;
+        while (index + 1 < root.messageTops.length && root.messageTops[index + 1] <= target) index++;
+        if (!view.itemAtIndex(root.flipIndex(index))) view.positionViewAtIndex(root.flipIndex(index), ListView.Contain);
+        const item = view.itemAtIndex(root.flipIndex(index));
+        if (!item) return;
+        const lowest = view.originY;
+        const highest = lowest + Math.max(0, view.contentHeight - view.height);
+        view.contentY = Math.min(Math.max(item.y + target - root.messageTops[index], lowest), highest);
+    }
+
+    function linkRailWheel(deltaY) {
+        const view = messageListView;
+        const factor = Math.abs(deltaY) >= view.mouseScrollDeltaThreshold ? view.mouseScrollFactor : view.touchpadScrollFactor;
+        const lowest = view.originY;
+        const highest = lowest + Math.max(0, view.contentHeight - view.height);
+        // scrollTargetY rather than contentY, so turns stack while the last one animates.
+        view.scrollTargetY = Math.min(Math.max(view.scrollTargetY - deltaY / view.mouseScrollDeltaThreshold * factor, lowest), highest);
+        view.contentY = view.scrollTargetY;
+    }
+
+    property int linkJumpIndex: -1
+    function revealMessageTop(messageIndex) {
+        const item = messageListView.itemAtIndex(root.flipIndex(messageIndex));
+        if (!item) return false;
+        const lowest = messageListView.originY;
+        const highest = lowest + Math.max(0, messageListView.contentHeight - messageListView.height);
+        messageListView.contentY = Math.min(Math.max(item.y - 8, lowest), highest);
+        return true;
+    }
+
+    // Messages above the one jumped to may only get their real height once
+    // built, which moves it; the second pass lands on where it really is.
+    Timer {
+        id: linkJumpSettle
+        interval: 60
+        onTriggered: root.revealMessageTop(root.linkJumpIndex)
+    }
+
     // Both pickers live in the same strip above the composer, so opening one
     // closes the other rather than stacking two panels over the input.
     function toggleEffortPicker() {
@@ -609,6 +730,7 @@ Item {
                     top: parent.top
                     left: parent.left
                     right: parent.right
+                    rightMargin: root.linkRailShown ? linkRail.width + 4 : 0
                     bottom: parent.bottom
                     bottomMargin: backgroundTaskGrid.visible
                         ? backgroundTaskGrid.height + root.padding * Math.min(1, backgroundTaskGrid.height / 24)
@@ -649,6 +771,9 @@ Item {
                 StyledListView {
                     id: messageListView
                     anchors.fill: parent
+                    // The rail beside the chat is its scrollbar.
+                    ScrollBar.vertical: null
+                    smoothScroll: !linkRail.dragging
                     // The layer above only masks painting, so without this the
                     // delegates scrolled past the top still swallow clicks meant
                     // for the header buttons.
@@ -673,7 +798,11 @@ Item {
                     // The foot of the view is still atYEnd with the layout
                     // reversed; it is index 0 that lives down there now.
                     property bool following: true
-                    onContentYChanged: following = atYEnd
+                    onContentYChanged: {
+                        following = atYEnd;
+                        root.measureLinkView();
+                    }
+                    onHeightChanged: root.measureLinkView()
                     Connections {
                         target: ClaudeCode
                         function onBusyChanged() {
@@ -693,6 +822,8 @@ Item {
                         messageData: ClaudeCode.messageByID[modelData]
                         searchQuery: root.chatSearchQuery
                         searchCurrent: root.chatSearchHit?.messageIndex === messageDelegate.messageIndex ? root.chatSearchHit.ordinal : -1
+                        onHeightChanged: root.noteMessageHeight(messageDelegate.modelData, messageDelegate.height)
+                        Component.onCompleted: root.noteMessageHeight(messageDelegate.modelData, messageDelegate.height)
                     }
                 }
 
@@ -710,6 +841,27 @@ Item {
                     target: messageListView
                     reversed: true
                 }
+            }
+
+            // Beside the messages rather than in them: the messages' fade mask
+            // would cut off the link list that opens over the chat.
+            ChatLinkRail {
+                id: linkRail
+                anchors {
+                    top: messagesArea.top
+                    bottom: messagesArea.bottom
+                    right: parent.right
+                }
+                width: 26
+                visible: root.linkRailShown
+                markers: root.linkRailMarkers
+                viewTop: root.linkViewTop
+                viewHeight: root.linkViewHeight
+                scrollable: messageListView.contentHeight > messageListView.height + 1
+                popupMaxWidth: messagesArea.width - 16
+                onJump: messageIndex => root.linkRailJump(messageIndex)
+                onScrollTo: top => root.linkRailScrollTo(top)
+                onWheelScrolled: deltaY => root.linkRailWheel(deltaY)
             }
 
             BackgroundTaskGrid {
