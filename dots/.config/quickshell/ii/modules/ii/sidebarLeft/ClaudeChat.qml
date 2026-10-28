@@ -31,20 +31,33 @@ Item {
     // simply to open the web app.
     readonly property string claudeWebUrl: "https://claude.ai/cowork/projects"
 
-    // Slash commands are offered only while the whole message is still just
-    // the command being typed, so a "/" mid-sentence doesn't trigger them.
+    // The "/word" ending at the caret. It has to start the message or follow
+    // whitespace, so paths and "and/or" don't open the list.
+    readonly property var slashToken: {
+        const before = messageInputField.text.slice(0, messageInputField.cursorPosition);
+        const match = /(?:^|\s)\/([^\s\/]*)$/.exec(before);
+        if (!match) return null;
+        return { start: before.length - match[1].length - 1, query: match[1].toLowerCase() };
+    }
+
     readonly property var slashSuggestions: {
-        const text = messageInputField.text;
-        if (!text.startsWith("/") || text.includes("\n") || text.includes(" ")) return [];
-        const query = text.slice(1).toLowerCase();
+        const token = root.slashToken;
+        if (!token) return [];
         return (ClaudeCode.slashCommands ?? [])
-            .filter(command => command.name.toLowerCase().includes(query))
+            .filter(command => command.name.toLowerCase().includes(token.query))
             .slice(0, 40);
     }
 
     function applySlashCommand(command) {
-        messageInputField.text = `/${command.name} `;
-        messageInputField.cursorPosition = messageInputField.text.length;
+        const token = root.slashToken;
+        if (!token) return;
+        const text = messageInputField.text;
+        let end = messageInputField.cursorPosition;
+        while (end < text.length && !/\s/.test(text[end])) end++;
+        const completion = `/${command.name}`;
+        messageInputField.remove(token.start, end);
+        messageInputField.insert(token.start, text[end] === " " ? completion : `${completion} `);
+        messageInputField.cursorPosition = token.start + completion.length + 1;
         messageInputField.forceActiveFocus();
     }
 
